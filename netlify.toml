@@ -1,7 +1,12 @@
+# Netlify 只會讀 repo 根目錄的 netlify.toml，所以這個檔案必須放在這裡，
+# 再用 base 指向實際的前端資料夾。
 [build]
   base = "web"
   command = "npm run build"
   publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
 
 # 單頁應用：所有路徑都交給 index.html
 [[redirects]]
