@@ -7,7 +7,7 @@ select '班級數（應為 20）'      as 檢查項目, count(*)::text as 結果
 union all
 select '品項數（應為 22）',      count(*)::text from public.items
 union all
-select '公庫總件數（應為 415）', sum(qty)::text from public.items
+select '公庫總件數（應為 405）', sum(qty)::text from public.items
 union all
 select 'RPC 數（應為 3）',       count(*)::text
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
