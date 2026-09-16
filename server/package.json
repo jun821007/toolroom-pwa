@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "衛生組工具室庫存 API（Railway）",
+  "description": "衛生組工具室庫存 API（Railway）— 只用 PostgREST，不依賴 WebSocket",
   "main": "src/index.js",
   "engines": {
     "node": ">=20"
@@ -13,7 +13,7 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/postgrest-js": "^2.116.0",
     "cors": "^2.8.5",
     "express": "^4.21.2"
   }

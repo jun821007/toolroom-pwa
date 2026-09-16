@@ -5,7 +5,7 @@
  */
 import express from "express";
 import cors from "cors";
-import { createClient } from "@supabase/supabase-js";
+import { PostgrestClient } from "@supabase/postgrest-js";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_KEY, ALLOWED_ORIGIN, PORT = 8080 } = process.env;
 
@@ -25,9 +25,17 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   configError = `Railway 缺少環境變數：${missing.join("、")}。請到 Railway → Variables 補上後重新部署。`;
 } else {
   try {
-    db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false },
-    });
+    // 只用 PostgREST，不碰 supabase-js 的 Realtime／Auth／Storage：
+    // 那些會要求 Node 22+ 的原生 WebSocket，這支 API 完全用不到。
+    const key = SUPABASE_SERVICE_KEY.trim();
+
+    // 新式金鑰（sb_secret_ / sb_publishable_）不是 JWT，只能放 apikey，不可當 Bearer
+    const isNewFormat = key.startsWith("sb_secret_") || key.startsWith("sb_publishable_");
+    const headers = isNewFormat
+      ? { apikey: key }
+      : { apikey: key, Authorization: `Bearer ${key}` };
+
+    db = new PostgrestClient(`${SUPABASE_URL.trim().replace(/\/$/, "")}/rest/v1`, { headers });
   } catch (err) {
     configError = `Supabase 設定有誤：${err.message}。請檢查 SUPABASE_URL 與 SUPABASE_SERVICE_KEY 是否貼錯。`;
   }
@@ -57,9 +65,12 @@ const handle = (fn) => async (req, res) => {
   }
 };
 
-/** Supabase 回傳的 { data, error }：有 error 就丟出來讓 handle 接住 */
+/** PostgREST 回傳的 { data, error }：有 error 就丟出來讓 handle 接住 */
 const unwrap = ({ data, error }) => {
-  if (error) throw new Error(error.message);
+  if (error) {
+    // PL/pgSQL 的 RAISE EXCEPTION 訊息會落在 message，已經是中文人話
+    throw new Error(error.message || error.hint || error.details || "資料庫作業失敗");
+  }
   return data;
 };
 
