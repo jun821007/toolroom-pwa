@@ -9,14 +9,31 @@ import { createClient } from "@supabase/supabase-js";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_KEY, ALLOWED_ORIGIN, PORT = 8080 } = process.env;
 
+/**
+ * 設定不完整時「不要」讓程序結束。
+ * 一結束 Railway 只會顯示 Application failed to respond，
+ * 真正的原因被埋在 log 裡；照樣啟動才能把問題直接回給瀏覽器看。
+ */
+let db = null;
+let configError = null;
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error("缺少環境變數 SUPABASE_URL 或 SUPABASE_SERVICE_KEY");
-  process.exit(1);
+  const missing = [
+    !SUPABASE_URL && "SUPABASE_URL",
+    !SUPABASE_SERVICE_KEY && "SUPABASE_SERVICE_KEY",
+  ].filter(Boolean);
+  configError = `Railway 缺少環境變數：${missing.join("、")}。請到 Railway → Variables 補上後重新部署。`;
+} else {
+  try {
+    db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false },
+    });
+  } catch (err) {
+    configError = `Supabase 設定有誤：${err.message}。請檢查 SUPABASE_URL 與 SUPABASE_SERVICE_KEY 是否貼錯。`;
+  }
 }
 
-const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  auth: { persistSession: false },
-});
+if (configError) console.error(configError);
 
 const app = express();
 app.use(express.json({ limit: "256kb" }));
@@ -29,6 +46,7 @@ app.use(
 /** 把 async handler 的例外統一轉成 JSON 錯誤回應 */
 const handle = (fn) => async (req, res) => {
   try {
+    if (configError) throw new Error(configError);
     await fn(req, res);
   } catch (err) {
     let message = err?.message || "伺服器發生錯誤";
@@ -67,7 +85,15 @@ function cleanItems(raw) {
 /* ------------------------------------------------------------------ */
 
 app.get("/", (_req, res) => res.json({ ok: true, service: "toolroom-api" }));
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+/** 健康檢查順便回報設定狀態，直接用瀏覽器打開就能看出缺什麼 */
+app.get("/api/health", (_req, res) =>
+  res.json({
+    ok: true,
+    supabase: configError ? "未設定" : "已設定",
+    problem: configError ?? undefined,
+  })
+);
 
 /** 一次抓齊班級、公庫品項、各班持有量 — 手機只打一次就能開畫面 */
 app.get(
@@ -212,4 +238,7 @@ app.post(
   })
 );
 
-app.listen(Number(PORT), () => console.log(`toolroom-api listening on :${PORT}`));
+// Railway 要求綁 0.0.0.0，否則邊緣節點轉不進來
+app.listen(Number(PORT), "0.0.0.0", () =>
+  console.log(`toolroom-api listening on 0.0.0.0:${PORT}`)
+);
