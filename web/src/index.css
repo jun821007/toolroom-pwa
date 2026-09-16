@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* 避免 iOS 橫置時自動放大字級 */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-mint-50 text-slate-800 antialiased;
+    background-image:
+      radial-gradient(circle at 8% -6%, rgba(52, 211, 153, 0.25), transparent 45%),
+      radial-gradient(circle at 96% 2%, rgba(56, 189, 248, 0.25), transparent 42%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+    /* 站在主畫面 App 模式時，禁止整頁橡皮筋回彈 */
+    overscroll-behavior-y: none;
+  }
+
+  /* 全站避免長按選字，操作起來更像原生 App；輸入框例外 */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /* 數字欄位不要上下箭頭 */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white bg-white/90 shadow-card;
+  }
+
+  /* 大按鈕：min-h 56px，單手好點 */
+  .btn {
+    @apply inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-2xl px-5
+           text-base font-bold transition active:scale-[0.97]
+           disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-mint {
+    @apply btn bg-mint-500 text-white shadow-card;
+  }
+  .btn-sky {
+    @apply btn bg-sky2-500 text-white shadow-card;
+  }
+  .btn-zest {
+    @apply btn bg-zest-500 text-white shadow-card;
+  }
+  .btn-plain {
+    @apply btn border-2 border-slate-200 bg-white text-slate-600;
+  }
+
+  .field {
+    /* 字級 16px 以上，iOS 才不會在聚焦時自動縮放畫面 */
+    @apply w-full rounded-2xl border-2 border-mint-200 bg-white px-4 py-3 text-base
+           outline-none transition placeholder:text-slate-400 focus:border-mint-400;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold;
+  }
+}
+
+/* iPhone 安全區域 */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1,0 +1,22 @@
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "dist"
+
+# 單頁應用：所有路徑都交給 index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Service Worker 不可被快取，否則改版後手機會一直吃舊版
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json"
