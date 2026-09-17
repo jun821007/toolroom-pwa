@@ -16,6 +16,8 @@ const { SUPABASE_URL, SUPABASE_SERVICE_KEY, ALLOWED_ORIGIN, PORT = 8080 } = proc
  */
 let db = null;
 let configError = null;
+let restUrl = null;      // 健康檢查要自己打 PostgREST 根路徑，所以留著
+let authHeaders = null;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   const missing = [
@@ -29,13 +31,15 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     // 那些會要求 Node 22+ 的原生 WebSocket，這支 API 完全用不到。
     const key = SUPABASE_SERVICE_KEY.trim();
 
-    // 新式金鑰（sb_secret_ / sb_publishable_）不是 JWT，只能放 apikey，不可當 Bearer
+    // 新式金鑰（sb_secret_ / sb_publishable_）不是 JWT，放進 Bearer 會被判 Invalid JWT，
+    // 只能走 apikey 標頭；舊式 service_role 是 JWT，兩個標頭都要給
     const isNewFormat = key.startsWith("sb_secret_") || key.startsWith("sb_publishable_");
-    const headers = isNewFormat
+    authHeaders = isNewFormat
       ? { apikey: key }
       : { apikey: key, Authorization: `Bearer ${key}` };
 
-    db = new PostgrestClient(`${SUPABASE_URL.trim().replace(/\/$/, "")}/rest/v1`, { headers });
+    restUrl = `${SUPABASE_URL.trim().replace(/\/$/, "")}/rest/v1`;
+    db = new PostgrestClient(restUrl, { headers: authHeaders });
   } catch (err) {
     configError = `Supabase 設定有誤：${err.message}。請檢查 SUPABASE_URL 與 SUPABASE_SERVICE_KEY 是否貼錯。`;
   }
@@ -97,14 +101,42 @@ function cleanItems(raw) {
 
 app.get("/", (_req, res) => res.json({ ok: true, service: "toolroom-api" }));
 
-/** 健康檢查順便回報設定狀態，直接用瀏覽器打開就能看出缺什麼 */
-app.get("/api/health", (_req, res) =>
-  res.json({
-    ok: true,
-    supabase: configError ? "未設定" : "已設定",
-    problem: configError ?? undefined,
-  })
-);
+/**
+ * 健康檢查：直接用瀏覽器打開，一頁看完金鑰對不對、資料進去了沒。
+ * 「查得到但都是空的」最常見的兩個原因是金鑰貼成公開金鑰、或 schema.sql 沒跑，
+ * 從外面看症狀一模一樣，所以這裡把兩者分開報。
+ */
+app.get("/api/health", async (_req, res) => {
+  if (configError) return res.json({ ok: true, supabase: "未設定", problem: configError });
+
+  const out = { ok: true, supabase: "已設定" };
+
+  // /rest/v1/ 是 OpenAPI 根路徑，只有密鑰打得開；公開金鑰一律 403
+  try {
+    const probe = await fetch(`${restUrl}/`, { headers: authHeaders });
+    out.金鑰 = probe.ok
+      ? "正確（密鑰／service_role，可繞過 RLS）"
+      : `權限不足（HTTP ${probe.status}）— 你貼的應該是公開金鑰（anon／publishable），` +
+        `請換成 Secret key（sb_secret_…）或 service_role key`;
+  } catch (err) {
+    out.金鑰 = `連不到 Supabase：${err.message}，請檢查 SUPABASE_URL`;
+  }
+
+  // 每張表幾筆，一眼看出 schema.sql 的 seed 有沒有真的寫進去
+  try {
+    const counts = {};
+    for (const t of ["classes", "items", "class_stock", "logs"]) {
+      const { count, error } = await db.from(t).select("*", { count: "exact", head: true });
+      counts[t] = error ? `讀不到：${error.message}` : count;
+    }
+    out.資料筆數 = counts;
+    out.預期 = { classes: 20, items: 22, class_stock: "0（還沒發放很正常）", logs: "0 以上" };
+  } catch (err) {
+    out.資料筆數 = `讀取失敗：${err.message}`;
+  }
+
+  res.json(out);
+});
 
 /** 一次抓齊班級、公庫品項、各班持有量 — 手機只打一次就能開畫面 */
 app.get(
