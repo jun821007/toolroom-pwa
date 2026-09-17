@@ -4,7 +4,7 @@ import ItemPicker from "../components/ItemPicker";
 import { api } from "../api";
 
 /** A 班 ➔ B 班批量調貨 */
-export default function TransferPage({ classes, items, stock, operator, reload, toast }) {
+export default function TransferPage({ classes, items, stock, reload, toast }) {
   const [fromClass, setFromClass] = useState(null);
   const [toClass, setToClass] = useState(null);
   const [picked, setPicked] = useState({});
@@ -45,7 +45,6 @@ export default function TransferPage({ classes, items, stock, operator, reload, 
         from_class_id: fromClass,
         to_class_id: toClass,
         items: lines,
-        operator,
         note,
       });
       setPicked({});

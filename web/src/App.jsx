@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import { api, AuthExpiredError } from "./api";
+import { supabase, authConfigured, signOut } from "./auth";
 import Toast from "./components/Toast";
-import Sheet from "./components/Sheet";
 import StockPage from "./pages/StockPage";
 import DistributePage from "./pages/DistributePage";
 import TransferPage from "./pages/TransferPage";
 import LogsPage from "./pages/LogsPage";
+import LoginPage from "./pages/LoginPage";
 
 const TABS = [
   { key: "stock", label: "公庫", icon: "🧰" },
@@ -19,33 +20,57 @@ export default function App() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
-  const [operator, setOperator] = useState(() => localStorage.getItem("operator") || "");
-  const [askName, setAskName] = useState(false);
+
+  // undefined = 還在確認有沒有登入紀錄，null = 沒登入
+  const [session, setSession] = useState(undefined);
+
+  // 開 App 時先還原上次的登入，之後持續跟著登入／登出／權杖換新變動
+  useEffect(() => {
+    if (!authConfigured) return;
+
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const reload = useCallback(async () => {
     try {
       setData(await api.bootstrap());
       setError(null);
     } catch (err) {
+      // 權杖失效就退回登入畫面，不要卡在錯誤頁
+      if (err instanceof AuthExpiredError) return signOut();
       setError(err.message);
     }
   }, []);
 
+  // 登入後才載入資料；登出時把資料清掉，避免下一個人看到殘影
   useEffect(() => {
-    reload();
-  }, [reload]);
+    if (session) reload();
+    else if (session === null) setData(null);
+  }, [session, reload]);
 
-  // 第一次開啟先問經手人，之後記在手機上不再詢問
-  useEffect(() => {
-    if (data && !operator) setAskName(true);
-  }, [data, operator]);
+  if (!authConfigured) {
+    return (
+      <Center>
+        <p className="text-4xl">🔑</p>
+        <p className="mt-3 text-base font-extrabold text-slate-700">還沒設定登入</p>
+        <p className="mt-2 text-sm font-bold text-slate-500">
+          請到 Netlify 補上 VITE_SUPABASE_URL 與 VITE_SUPABASE_ANON_KEY，再重新部署。
+        </p>
+      </Center>
+    );
+  }
 
-  const saveOperator = (name) => {
-    const clean = name.trim() || "未署名";
-    localStorage.setItem("operator", clean);
-    setOperator(clean);
-    setAskName(false);
-  };
+  if (session === undefined) {
+    return (
+      <Center>
+        <p className="animate-pulse text-4xl">🧹</p>
+      </Center>
+    );
+  }
+
+  if (!session) return <LoginPage />;
 
   if (error) {
     return (
@@ -69,7 +94,9 @@ export default function App() {
     );
   }
 
-  const shared = { ...data, operator, reload, toast: setToast };
+  // 經手人由後端依登入身分決定，前端只負責顯示
+  const operator = data.me?.name || "";
+  const shared = { ...data, reload, toast: setToast };
 
   return (
     <div className="mx-auto max-w-lg">
@@ -79,10 +106,12 @@ export default function App() {
             🧹 衛生組工具室
           </h1>
           <button
-            onClick={() => setAskName(true)}
+            onClick={() => {
+              if (confirm(`要登出「${operator}」嗎？`)) signOut();
+            }}
             className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-500 shadow-card"
           >
-            {operator || "設定經手人"}
+            {operator}
           </button>
         </div>
       </header>
@@ -114,41 +143,8 @@ export default function App() {
         </div>
       </nav>
 
-      <NameSheet open={askName} current={operator} onSave={saveOperator} onClose={() => setAskName(false)} />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
-  );
-}
-
-function NameSheet({ open, current, onSave, onClose }) {
-  const [name, setName] = useState(current);
-
-  useEffect(() => {
-    if (open) setName(current);
-  }, [open, current]);
-
-  return (
-    <Sheet
-      open={open}
-      title="你是誰？"
-      onClose={current ? onClose : () => onSave(name)}
-      footer={
-        <button className="btn-mint w-full" onClick={() => onSave(name)}>
-          記住我
-        </button>
-      }
-    >
-      <p className="mb-3 text-sm font-bold text-slate-500">
-        每筆異動都會記下經手人，設定一次就好，之後這支手機不會再問。
-      </p>
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="例如：王小明"
-        className="field text-center text-lg font-extrabold"
-      />
-    </Sheet>
   );
 }
 

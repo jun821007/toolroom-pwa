@@ -3,7 +3,7 @@ import Sheet from "../components/Sheet";
 import { api } from "../api";
 
 /** 衛生組公庫：品項清單、快速補貨、新增／編輯品項 */
-export default function StockPage({ items, operator, reload, toast }) {
+export default function StockPage({ items, reload, toast }) {
   const [keyword, setKeyword] = useState("");
   const [sheet, setSheet] = useState(null); // { mode:'restock'|'create'|'edit', item }
   const [busy, setBusy] = useState(false);
@@ -89,7 +89,7 @@ export default function StockPage({ items, operator, reload, toast }) {
       </div>
 
       {sheet?.mode === "restock" ? (
-        <RestockSheet item={sheet.item} busy={busy} operator={operator} onClose={() => setSheet(null)} onRun={run} />
+        <RestockSheet item={sheet.item} busy={busy} onClose={() => setSheet(null)} onRun={run} />
       ) : null}
 
       {sheet?.mode === "create" || sheet?.mode === "edit" ? (
@@ -105,7 +105,7 @@ export default function StockPage({ items, operator, reload, toast }) {
   );
 }
 
-function RestockSheet({ item, busy, operator, onClose, onRun }) {
+function RestockSheet({ item, busy, onClose, onRun }) {
   const [qty, setQty] = useState("");
   const n = parseInt(qty, 10);
   const valid = Number.isInteger(n) && n > 0;
@@ -121,7 +121,7 @@ function RestockSheet({ item, busy, operator, onClose, onRun }) {
           disabled={busy || !valid}
           onClick={() =>
             onRun(
-              () => api.restock(item.id, { qty: n, operator }),
+              () => api.restock(item.id, { qty: n }),
               `${item.name} 已入庫 ${n} ${item.unit}`
             )
           }

@@ -21,9 +21,24 @@ toolroom-pwa/
 2. 左側 **SQL Editor → New query**，貼上 `supabase/schema.sql` 全文 → **Run**。
    - 建 4 張表（`items` / `classes` / `class_stock` / `logs`）與 3 支 RPC
    - 寫入 20 個班級、22 項工具室現有庫存
-3. **Project Settings → API**，抄下兩個東西：
+3. **Project Settings → API Keys**，抄下三個東西：
    - `Project URL`
-   - `service_role` key（⚠️ 只給 Railway 用，絕不放前端）
+   - **Secret key**（`sb_secret_…`，舊版叫 `service_role`）⚠️ 只給 Railway，絕不放前端
+   - **Publishable key**（`sb_publishable_…`，舊版叫 `anon`）→ 給前端登入用
+
+### 建立登入帳號
+
+4. **Authentication → Providers → Email**，把 **Allow new users to sign up** 關掉。
+   不關的話，任何人都能自己註冊然後登進來。
+5. **Authentication → Users → Add user**，填 Email 與密碼，勾 **Auto Confirm User**。
+6. 想讓流水帳顯示中文名字（否則會用 Email 的 @ 前半段），到 SQL Editor 跑：
+
+   ```sql
+   update auth.users
+      set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb)
+                               || jsonb_build_object('name', '小妹')
+    where email = '剛剛建立的帳號@example.com';
+   ```
 
 ## 步驟 2：推上 GitHub
 
@@ -59,6 +74,8 @@ git push -u origin main
    | 變數 | 值 |
    |------|-----|
    | `VITE_API_BASE` | 步驟 3 的 Railway 網址（**結尾不要斜線**） |
+   | `VITE_SUPABASE_URL` | 步驟 1 的 Project URL |
+   | `VITE_SUPABASE_ANON_KEY` | 步驟 1 的 Publishable／anon key |
 
 4. 重新 Deploy 一次讓環境變數生效。
 5. 回 Railway 把 `ALLOWED_ORIGIN` 填成 Netlify 網址（例如 `https://xxx.netlify.app`），會自動重啟。
@@ -100,15 +117,18 @@ npm run dev -- --host 127.0.0.1
 
 | Method | 路徑 | 說明 |
 |--------|------|------|
-| GET | `/api/health` | 健康檢查（Railway 用） |
+除了 `/api/health`，每一支都必須帶 `Authorization: Bearer <Supabase access token>`，
+否則回 401。流水帳的「經手人」一律取自這個權杖所屬的帳號，前端傳什麼都不算。
+
+| GET | `/api/health` | 健康檢查＋診斷金鑰與各表筆數（不需登入） |
 | GET | `/api/bootstrap` | 一次回傳班級 + 公庫品項 + 各班持有量 |
 | GET | `/api/logs?kind=&class_id=&item_id=` | 流水帳 |
 | POST | `/api/items` | 新增品項 `{ name, unit, qty }` |
 | PUT | `/api/items/:id` | 改名稱／單位 |
 | DELETE | `/api/items/:id` | 停用品項（保留歷史流水） |
-| POST | `/api/items/:id/restock` | 補貨 `{ qty, operator, note }` |
-| POST | `/api/distribute` | 公庫發放 `{ to_class_id, items:[{item_id,qty}], operator, note }` |
-| POST | `/api/transfer` | 跨班調貨 `{ from_class_id, to_class_id, items, operator, note }` |
+| POST | `/api/items/:id/restock` | 補貨 `{ qty, note }` |
+| POST | `/api/distribute` | 公庫發放 `{ to_class_id, items:[{item_id,qty}], note }` |
+| POST | `/api/transfer` | 跨班調貨 `{ from_class_id, to_class_id, items, note }` |
 
 ## 畫面
 
@@ -121,7 +141,9 @@ npm run dev -- --host 127.0.0.1
 | 🔄 調貨 | 選來源班 → 目標班 → 只列出來源班真的有的東西 → 扣 A 補 B |
 | 🧾 流水 | 時間、來源 ➔ 去向、品項、數量、經手人，可依類型與班級篩選 |
 
-經手人第一次開啟時輸入，存在手機 `localStorage`，之後不再詢問。
+開啟後先登入（Email + 密碼，Supabase Auth）。登入狀態存在手機上並會自動續期，
+平常開 App 不必再輸入；點右上角自己的名字可以登出。經手人直接取自登入身分，
+所以流水帳上的名字沒辦法造假。
 
 ## 配色
 

@@ -4,7 +4,7 @@ import ItemPicker from "../components/ItemPicker";
 import { api } from "../api";
 
 /** 公庫 ➔ 班級批量發放 */
-export default function DistributePage({ classes, items, operator, reload, toast }) {
+export default function DistributePage({ classes, items, reload, toast }) {
   const [toClass, setToClass] = useState(null);
   const [picked, setPicked] = useState({});
   const [note, setNote] = useState("");
@@ -18,7 +18,7 @@ export default function DistributePage({ classes, items, operator, reload, toast
   const submit = async () => {
     setBusy(true);
     try {
-      await api.distribute({ to_class_id: toClass, items: lines, operator, note });
+      await api.distribute({ to_class_id: toClass, items: lines, note });
       setPicked({});
       setNote("");
       await reload();

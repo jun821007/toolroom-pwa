@@ -55,6 +55,62 @@ app.use(
   })
 );
 
+/* ------------------------------------------------------------------ */
+/* 登入驗證                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 驗證前端帶上來的 Supabase 登入權杖。
+ *
+ * 這裡是直接問 Supabase Auth，而不是自己在本地驗簽章：專案日後改用非對稱
+ * 金鑰也不必跟著改，也不用再多存一份 JWT secret。這支服務流量極低，多一次
+ * 往返無感；驗過的權杖快取 60 秒，避免每個動作都打一次。
+ */
+const tokenCache = new Map();
+
+async function verifyToken(token) {
+  const hit = tokenCache.get(token);
+  if (hit && hit.expires > Date.now()) return hit.user;
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+
+  const user = await res.json();
+  if (!user?.id) return null;
+
+  if (tokenCache.size > 100) tokenCache.clear(); // 權杖會輪替，別讓它無限長大
+  tokenCache.set(token, { user, expires: Date.now() + 60_000 });
+  return user;
+}
+
+async function requireAuth(req, res, next) {
+  if (configError) return res.status(500).json({ error: configError });
+
+  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return res.status(401).json({ error: "請先登入" });
+
+  let user;
+  try {
+    user = await verifyToken(token);
+  } catch (err) {
+    return res.status(503).json({ error: `無法確認登入狀態：${err.message}` });
+  }
+  if (!user) return res.status(401).json({ error: "登入已失效，請重新登入" });
+
+  req.user = user;
+  // 流水帳的經手人一律取自登入身分，前端傳什麼都不算，才沒辦法冒名
+  req.operator =
+    user.user_metadata?.name?.trim() || user.email?.split("@")[0] || "未署名";
+  next();
+}
+
+// /api/health 要能在還沒登入時就用來診斷設定，所以排除在驗證之外
+app.use("/api", (req, res, next) =>
+  req.path === "/health" ? next() : requireAuth(req, res, next)
+);
+
 /** 把 async handler 的例外統一轉成 JSON 錯誤回應 */
 const handle = (fn) => async (req, res) => {
   try {
@@ -141,13 +197,14 @@ app.get("/api/health", async (_req, res) => {
 /** 一次抓齊班級、公庫品項、各班持有量 — 手機只打一次就能開畫面 */
 app.get(
   "/api/bootstrap",
-  handle(async (_req, res) => {
+  handle(async (req, res) => {
     const [classes, items, stock] = await Promise.all([
       db.from("classes").select("id,name,sort").order("sort").then(unwrap),
       db.from("items").select("id,name,unit,qty,active").eq("active", true).order("name").then(unwrap),
       db.from("class_stock").select("class_id,item_id,qty").gt("qty", 0).then(unwrap),
     ]);
-    res.json({ classes, items, stock });
+    // 一併回傳經手人，前端就不必自己解 JWT 也不必另外打一支 API
+    res.json({ classes, items, stock, me: { name: req.operator, email: req.user.email } });
   })
 );
 
@@ -189,7 +246,7 @@ app.post(
     if (qty > 0) {
       await db
         .from("logs")
-        .insert({ kind: "RESTOCK", item_id: item.id, qty, operator: "建檔", note: "新增品項初始庫存" })
+        .insert({ kind: "RESTOCK", item_id: item.id, qty, operator: req.operator, note: "新增品項初始庫存" })
         .then(unwrap);
     }
 
@@ -239,7 +296,7 @@ app.post(
       .rpc("restock", {
         p_item: Number(req.params.id),
         p_qty: qty,
-        p_operator: req.body?.operator || "未署名",
+        p_operator: req.operator,
         p_note: req.body?.note || null,
       })
       .then(unwrap);
@@ -255,7 +312,7 @@ app.post(
       .rpc("distribute", {
         p_to: Number(req.body?.to_class_id),
         p_items: cleanItems(req.body?.items),
-        p_operator: req.body?.operator || "未署名",
+        p_operator: req.operator,
         p_note: req.body?.note || null,
       })
       .then(unwrap);
@@ -272,7 +329,7 @@ app.post(
         p_from: Number(req.body?.from_class_id),
         p_to: Number(req.body?.to_class_id),
         p_items: cleanItems(req.body?.items),
-        p_operator: req.body?.operator || "未署名",
+        p_operator: req.operator,
         p_note: req.body?.note || null,
       })
       .then(unwrap);
