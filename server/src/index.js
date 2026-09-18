@@ -151,6 +151,26 @@ function cleanItems(raw) {
   return [...merged].map(([item_id, qty]) => ({ item_id, qty }));
 }
 
+/** 班級起始／調整庫存：允許設成 0，且要保留每一個有改到的品項 */
+function cleanAbsoluteItems(raw) {
+  if (!Array.isArray(raw)) throw new Error("品項格式錯誤");
+
+  const out = [];
+  const seen = new Set();
+  for (const row of raw) {
+    const id = Number(row?.item_id);
+    const qty = Number(row?.qty);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    if (!Number.isInteger(qty) || qty < 0) throw new Error("數量必須是 ≥ 0 的整數");
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ item_id: id, qty });
+  }
+
+  if (out.length === 0) throw new Error("請至少設定一項工具");
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /* 讀取                                                                */
 /* ------------------------------------------------------------------ */
@@ -181,7 +201,7 @@ app.get("/api/health", async (_req, res) => {
   // 每張表幾筆，一眼看出 schema.sql 的 seed 有沒有真的寫進去
   try {
     const counts = {};
-    for (const t of ["classes", "items", "class_stock", "logs"]) {
+    for (const t of ["classes", "items", "class_stock", "logs", "class_notes"]) {
       const { count, error } = await db.from(t).select("*", { count: "exact", head: true });
       counts[t] = error ? `讀不到：${error.message}` : count;
     }
@@ -382,6 +402,61 @@ app.post(
         p_from: Number(req.body?.from_class_id),
         p_to: Number(req.body?.to_class_id),
         p_items: cleanItems(req.body?.items),
+        p_operator: req.operator,
+        p_note: req.body?.note || null,
+      })
+      .then(unwrap);
+
+    res.json({ ok: true, count });
+  })
+);
+
+/** 班級備註：最新在前 */
+app.get(
+  "/api/classes/:id/notes",
+  handle(async (req, res) => {
+    const classId = Number(req.params.id);
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const rows = await db
+      .from("class_notes")
+      .select("id,class_id,body,operator,created_at")
+      .eq("class_id", classId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+      .then(unwrap);
+    res.json(rows);
+  })
+);
+
+app.post(
+  "/api/classes/:id/notes",
+  handle(async (req, res) => {
+    const classId = Number(req.params.id);
+    const body = String(req.body?.body || "").trim();
+    if (!body) throw new Error("請輸入文字");
+
+    const found = await db.from("classes").select("id").eq("id", classId).limit(1).then(unwrap);
+    if (!found?.length) throw new Error("班級不存在");
+
+    const row = await db
+      .from("class_notes")
+      .insert({ class_id: classId, body, operator: req.operator })
+      .select()
+      .single()
+      .then(unwrap);
+
+    res.json(row);
+  })
+);
+
+/** 班級起始／調整貨量（絕對值，不扣公庫） */
+app.post(
+  "/api/classes/:id/stock",
+  handle(async (req, res) => {
+    const count = await db
+      .rpc("set_class_stock", {
+        p_class: Number(req.params.id),
+        p_items: cleanAbsoluteItems(req.body?.items),
         p_operator: req.operator,
         p_note: req.body?.note || null,
       })

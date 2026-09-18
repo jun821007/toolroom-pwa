@@ -5,6 +5,7 @@ const KINDS = {
   RESTOCK: { label: "進貨", chip: "bg-mint-100 text-mint-700", bar: "bg-mint-400" },
   DISTRIBUTE: { label: "發放", chip: "bg-sky2-100 text-sky2-700", bar: "bg-sky2-400" },
   TRANSFER: { label: "調貨", chip: "bg-zest-100 text-zest-700", bar: "bg-zest-400" },
+  ADJUST: { label: "調整", chip: "bg-violet-100 text-violet-700", bar: "bg-violet-400" },
 };
 
 const fmt = (iso) =>
@@ -96,8 +97,16 @@ export default function LogsPage({ classes, items, toast }) {
                   </div>
 
                   <p className="mt-1.5 text-sm font-extrabold text-slate-800">
-                    {nameOf(log.from_class)} <span className="text-zest-500">➔</span>{" "}
-                    {nameOf(log.to_class)}
+                    {log.kind === "ADJUST"
+                      ? `${nameOf(log.to_class)}（自行調整）`
+                      : log.kind === "RESTOCK"
+                        ? "衛生組公庫"
+                        : (
+                          <>
+                            {nameOf(log.from_class)} <span className="text-zest-500">➔</span>{" "}
+                            {nameOf(log.to_class)}
+                          </>
+                        )}
                   </p>
 
                   <p className="text-sm font-bold text-slate-600">

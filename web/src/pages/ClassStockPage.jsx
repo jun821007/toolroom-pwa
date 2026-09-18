@@ -10,6 +10,7 @@ const KINDS = {
   RESTOCK: { label: "進貨", chip: "bg-mint-100 text-mint-700" },
   DISTRIBUTE: { label: "發放", chip: "bg-sky2-100 text-sky2-700" },
   TRANSFER: { label: "調貨", chip: "bg-zest-100 text-zest-700" },
+  ADJUST: { label: "調整", chip: "bg-violet-100 text-violet-700" },
 };
 
 const fmt = (iso) =>
@@ -22,7 +23,18 @@ const fmt = (iso) =>
     hour12: false,
   });
 
-/** 查各班庫存：清單風格對齊公庫，點品項可看明細 */
+const fmtFull = (iso) =>
+  new Date(iso).toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+/** 查各班庫存：備註、起始貨量、品項明細 */
 export default function ClassStockPage({ classes, items, stock, reload, toast }) {
   const [classId, setClassId] = useState(() => {
     const saved = Number(localStorage.getItem(LAST_CLASS_KEY));
@@ -33,8 +45,12 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
     return !(Number.isInteger(saved) && saved > 0);
   });
   const [keyword, setKeyword] = useState("");
-  const [detail, setDetail] = useState(null); // { id, name, unit, qty }
+  const [detail, setDetail] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -42,6 +58,8 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
     setClassId(id);
     setKeyword("");
     setDetail(null);
+    setNotesOpen(false);
+    setAdjustOpen(false);
     if (id) {
       localStorage.setItem(LAST_CLASS_KEY, String(id));
       setPicking(false);
@@ -49,6 +67,24 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
       localStorage.removeItem(LAST_CLASS_KEY);
     }
   };
+
+  const loadNotes = async (id = classId) => {
+    if (!id) return;
+    setNotesLoading(true);
+    try {
+      setNotes(await api.classNotes(id));
+    } catch (err) {
+      toast?.({ ok: false, msg: err.message });
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (classId && !picking) loadNotes(classId);
+    else setNotes([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, picking]);
 
   const rows = useMemo(() => {
     if (!classId) return [];
@@ -68,6 +104,7 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
   const visible = kw ? rows.filter((r) => r.name.includes(kw)) : rows;
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
   const selected = classes.find((c) => c.id === classId);
+  const latestNote = notes[0] || null;
 
   if (!classId || picking) {
     return (
@@ -129,6 +166,40 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={() => setAdjustOpen(true)}
+        className="btn-plain w-full border-2 border-dashed border-sky2-300 text-sky2-700"
+      >
+        調整起始貨量
+      </button>
+
+      {/* 備註：預設只看最新；點開看歷史＋新增 */}
+      <button
+        type="button"
+        onClick={() => setNotesOpen(true)}
+        className="card w-full px-4 py-3 text-left active:scale-[0.99]"
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-xs font-extrabold text-slate-400">班級備註</p>
+          <p className="text-[11px] font-bold text-sky2-600">
+            {latestNote ? "點開看歷史" : "點一下寫備註"}
+          </p>
+        </div>
+        {notesLoading && !latestNote ? (
+          <p className="text-sm font-bold text-slate-400">載入中…</p>
+        ) : latestNote ? (
+          <>
+            <p className="line-clamp-2 text-sm font-bold text-slate-800">{latestNote.body}</p>
+            <p className="mt-1 text-[11px] font-bold text-slate-400">
+              {fmt(latestNote.created_at)}｜{latestNote.operator}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm font-bold text-slate-400">還沒有備註，例如：掃具放在窗邊</p>
+        )}
+      </button>
+
       {rows.length > 0 ? (
         <input
           value={keyword}
@@ -138,7 +209,6 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
         />
       ) : null}
 
-      {/* 清單排版對齊公庫：左名稱、右數量，點一下開明細 */}
       <div className="space-y-2">
         {visible.map((row) => (
           <button
@@ -159,10 +229,10 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
         ))}
 
         {rows.length === 0 ? (
-          <p className="py-16 text-center text-sm font-bold text-slate-400">
+          <p className="py-12 text-center text-sm font-bold text-slate-400">
             這班目前沒有工具
             <br />
-            <span className="text-xs">到「發放」從公庫發過去</span>
+            <span className="text-xs">可按「調整起始貨量」，或到「發放」從公庫發</span>
           </p>
         ) : null}
 
@@ -181,11 +251,198 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
           toast={toast}
         />
       ) : null}
+
+      {notesOpen ? (
+        <NotesSheet
+          className={selected?.name}
+          classId={classId}
+          notes={notes}
+          onClose={() => setNotesOpen(false)}
+          onRefresh={loadNotes}
+          toast={toast}
+        />
+      ) : null}
+
+      {adjustOpen ? (
+        <AdjustStockSheet
+          classId={classId}
+          className={selected?.name}
+          items={items}
+          stock={stock}
+          onClose={() => setAdjustOpen(false)}
+          onSaved={async () => {
+            setAdjustOpen(false);
+            await reload();
+          }}
+          toast={toast}
+        />
+      ) : null}
     </div>
   );
 }
 
-/** 單一品項明細：現有數量 + 這班這項的異動紀錄（對齊公庫「點進去看」） */
+function NotesSheet({ className, classId, notes, onClose, onRefresh, toast }) {
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const clean = body.trim();
+    if (!clean || busy) return;
+    setBusy(true);
+    try {
+      await api.addClassNote(classId, { body: clean });
+      setBody("");
+      await onRefresh();
+      toast?.({ ok: true, msg: "已新增備註" });
+    } catch (err) {
+      toast?.({ ok: false, msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open
+      title={`${className}｜備註`}
+      onClose={onClose}
+      footer={
+        <button className="btn-mint w-full" disabled={busy || !body.trim()} onClick={submit}>
+          {busy ? "儲存中…" : "新增這筆備註"}
+        </button>
+      }
+    >
+      <textarea
+        autoFocus
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={3}
+        placeholder="寫下想記的事…"
+        className="field resize-none"
+      />
+
+      <h3 className="mb-2 mt-4 text-sm font-extrabold text-slate-500">歷史紀錄</h3>
+      {notes.length === 0 ? (
+        <p className="py-6 text-center text-sm font-bold text-slate-400">還沒有歷史備註</p>
+      ) : (
+        <div className="space-y-2">
+          {notes.map((n) => (
+            <div key={n.id} className="rounded-2xl border border-slate-100 px-3 py-3">
+              <p className="whitespace-pre-wrap text-sm font-bold text-slate-800">{n.body}</p>
+              <p className="mt-1 text-[11px] font-bold text-slate-400">
+                {fmtFull(n.created_at)}｜{n.operator}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/** 一次設定多個品項的絕對數量（不扣公庫） */
+function AdjustStockSheet({ classId, className, items, stock, onClose, onSaved, toast }) {
+  const current = useMemo(() => {
+    const map = new Map();
+    for (const s of stock) {
+      if (s.class_id === classId) map.set(s.item_id, s.qty);
+    }
+    return map;
+  }, [stock, classId]);
+
+  const ordered = useMemo(
+    () => [...items].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.name.localeCompare(b.name, "zh-Hant")),
+    [items]
+  );
+
+  const [draft, setDraft] = useState(() => {
+    const init = {};
+    for (const i of items) init[i.id] = String(current.get(i.id) ?? 0);
+    return init;
+  });
+  const [busy, setBusy] = useState(false);
+  const [keyword, setKeyword] = useState("");
+
+  const kw = keyword.trim();
+  const visible = kw ? ordered.filter((i) => i.name.includes(kw)) : ordered;
+
+  const changed = ordered
+    .map((i) => {
+      const next = Math.trunc(Number(draft[i.id]));
+      const prev = current.get(i.id) ?? 0;
+      if (!Number.isInteger(next) || next < 0) return null;
+      if (next === prev) return null;
+      return { item_id: i.id, qty: next };
+    })
+    .filter(Boolean);
+
+  const submit = async () => {
+    if (busy || changed.length === 0) return;
+    setBusy(true);
+    try {
+      await api.setClassStock(classId, { items: changed, note: "起始／調整貨量" });
+      toast?.({ ok: true, msg: `已更新 ${changed.length} 項貨量` });
+      await onSaved();
+    } catch (err) {
+      toast?.({ ok: false, msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open
+      title={`調整｜${className}`}
+      onClose={onClose}
+      footer={
+        <button className="btn-mint w-full" disabled={busy || changed.length === 0} onClick={submit}>
+          {busy ? "儲存中…" : changed.length ? `儲存 ${changed.length} 項變更` : "尚未修改"}
+        </button>
+      }
+    >
+      <p className="mb-3 text-sm font-bold text-slate-500">
+        直接填這班「現在應該有多少」。不會從公庫扣除，適合登記起始貨量或盤點修正。
+      </p>
+      <input
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
+        placeholder="搜尋工具…"
+        className="field mb-3"
+      />
+      <div className="space-y-2">
+        {visible.map((item) => {
+          const prev = current.get(item.id) ?? 0;
+          const dirty = String(prev) !== String(draft[item.id] ?? "0");
+          return (
+            <div
+              key={item.id}
+              className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${
+                dirty ? "border-mint-400 bg-mint-50" : "border-slate-100 bg-white"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-800">{item.name}</p>
+                <p className="text-[11px] font-bold text-slate-400">
+                  目前 {prev} {item.unit}
+                </p>
+              </div>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={draft[item.id] ?? "0"}
+                onChange={(e) => setDraft((d) => ({ ...d, [item.id]: e.target.value }))}
+                className="h-11 w-20 rounded-xl border-2 border-slate-200 text-center text-lg font-extrabold outline-none focus:border-mint-400"
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
 function ItemDetailSheet({ classId, className, item, classes, onClose, toast }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -236,10 +493,10 @@ function ItemDetailSheet({ classId, className, item, classes, onClose, toast }) 
             const meta = KINDS[log.kind] || { label: log.kind, chip: "bg-slate-100 text-slate-600" };
             const intoThis = log.to_class === classId;
             const outOfThis = log.from_class === classId;
-            const direction =
-              log.kind === "DISTRIBUTE"
-                ? `公庫 ➔ ${className}`
-                : `${nameOf(log.from_class)} ➔ ${nameOf(log.to_class)}`;
+            let direction;
+            if (log.kind === "ADJUST") direction = "自行調整";
+            else if (log.kind === "DISTRIBUTE") direction = `公庫 ➔ ${className}`;
+            else direction = `${nameOf(log.from_class)} ➔ ${nameOf(log.to_class)}`;
 
             return (
               <div key={log.id} className="rounded-2xl border border-slate-100 px-3 py-3">
@@ -259,15 +516,18 @@ function ItemDetailSheet({ classId, className, item, classes, onClose, toast }) 
                   </div>
                   <span
                     className={`shrink-0 text-lg font-extrabold tabular-nums ${
-                      intoThis && !outOfThis
-                        ? "text-mint-600"
-                        : outOfThis && !intoThis
-                          ? "text-zest-600"
-                          : "text-slate-700"
+                      log.kind === "ADJUST"
+                        ? "text-violet-600"
+                        : intoThis && !outOfThis
+                          ? "text-mint-600"
+                          : outOfThis && !intoThis
+                            ? "text-zest-600"
+                            : "text-slate-700"
                     }`}
                   >
-                    {intoThis && !outOfThis ? "+" : outOfThis && !intoThis ? "−" : ""}
-                    {log.qty}
+                    {log.kind === "ADJUST"
+                      ? `Δ${log.qty}`
+                      : `${intoThis && !outOfThis ? "+" : outOfThis && !intoThis ? "−" : ""}${log.qty}`}
                     <span className="ml-0.5 text-xs font-bold text-slate-400">{item.unit}</span>
                   </span>
                 </div>

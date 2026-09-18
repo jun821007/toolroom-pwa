@@ -57,6 +57,12 @@ export const api = {
 
   createClass: (body) => request("/api/classes", { method: "POST", body: JSON.stringify(body) }),
 
+  classNotes: (classId) => request(`/api/classes/${classId}/notes`),
+  addClassNote: (classId, body) =>
+    request(`/api/classes/${classId}/notes`, { method: "POST", body: JSON.stringify(body) }),
+  setClassStock: (classId, body) =>
+    request(`/api/classes/${classId}/stock`, { method: "POST", body: JSON.stringify(body) }),
+
   distribute: (body) => request("/api/distribute", { method: "POST", body: JSON.stringify(body) }),
   transfer: (body) => request("/api/transfer", { method: "POST", body: JSON.stringify(body) }),
 };
