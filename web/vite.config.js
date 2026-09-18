@@ -7,7 +7,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icons/apple-touch-icon.png"],
+      includeAssets: [
+        "favicon.svg",
+        "icons/apple-touch-icon.png",
+        "icons/icon-192.png",
+        "icons/icon-512.png",
+        "icons/icon-512-maskable.png",
+        "icons/favicon-64.png",
+      ],
       manifest: {
         name: "衛生組工具室庫存",
         short_name: "工具室庫存",
