@@ -20,10 +20,12 @@ export default function TransferPage({ classes, items, stock, reload, toast }) {
       .filter((s) => s.class_id === fromClass && s.qty > 0)
       .map((s) => {
         const item = itemById.get(s.item_id);
-        return item ? { id: item.id, name: item.name, unit: item.unit, available: s.qty } : null;
+        return item
+          ? { id: item.id, name: item.name, unit: item.unit, available: s.qty, sort: item.sort ?? 0 }
+          : null;
       })
       .filter(Boolean)
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+      .sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "zh-Hant"));
   }, [fromClass, stock, itemById]);
 
   const lines = Object.entries(picked).map(([id, qty]) => ({ item_id: Number(id), qty }));

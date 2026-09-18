@@ -200,7 +200,7 @@ app.get(
   handle(async (req, res) => {
     const [classes, items, stock] = await Promise.all([
       db.from("classes").select("id,name,sort").order("sort").then(unwrap),
-      db.from("items").select("id,name,unit,qty,active").eq("active", true).order("name").then(unwrap),
+      db.from("items").select("id,name,unit,qty,sort,active").eq("active", true).order("sort").order("name").then(unwrap),
       db.from("class_stock").select("class_id,item_id,qty").gt("qty", 0).then(unwrap),
     ]);
     // 一併回傳經手人，前端就不必自己解 JWT 也不必另外打一支 API
@@ -240,7 +240,11 @@ app.post(
     const qty = Math.max(0, Math.trunc(Number(req.body?.qty) || 0));
     if (!name) throw new Error("請輸入品項名稱");
 
-    const item = await db.from("items").insert({ name, unit, qty }).select().single().then(unwrap);
+    // 新品項排到最後
+    const existing = await db.from("items").select("sort").order("sort", { ascending: false }).limit(1).then(unwrap);
+    const sort = (existing?.[0]?.sort ?? 0) + 1;
+
+    const item = await db.from("items").insert({ name, unit, qty, sort }).select().single().then(unwrap);
 
     // 有填初始庫存就補一筆流水，帳才對得起來
     if (qty > 0) {
@@ -251,6 +255,29 @@ app.post(
     }
 
     res.json(item);
+  })
+);
+
+/** 批次寫回顯示順序；body: { ordered_ids: [3,1,2,…] } */
+app.put(
+  "/api/items/reorder",
+  handle(async (req, res) => {
+    const ids = req.body?.ordered_ids;
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("排序清單不能是空的");
+
+    const clean = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
+    if (clean.length === 0) throw new Error("排序清單格式錯誤");
+
+    // 逐筆更新；品項少，一次交易用不到 RPC
+    for (let i = 0; i < clean.length; i++) {
+      await db
+        .from("items")
+        .update({ sort: i + 1 })
+        .eq("id", clean[i])
+        .then(unwrap);
+    }
+
+    res.json({ ok: true, count: clean.length });
   })
 );
 
@@ -270,6 +297,32 @@ app.put(
       .then(unwrap);
 
     res.json(item);
+  })
+);
+
+/** 新增班級／地點（廁所等也算一筆） */
+app.post(
+  "/api/classes",
+  handle(async (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    if (!name) throw new Error("請輸入班級名稱");
+
+    const existing = await db
+      .from("classes")
+      .select("sort")
+      .order("sort", { ascending: false })
+      .limit(1)
+      .then(unwrap);
+    const sort = (existing?.[0]?.sort ?? 0) + 1;
+
+    const row = await db
+      .from("classes")
+      .insert({ name, sort })
+      .select()
+      .single()
+      .then(unwrap);
+
+    res.json(row);
   })
 );
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ClassPicker from "../components/ClassPicker";
+import AddClassSheet from "../components/AddClassSheet";
 import Sheet from "../components/Sheet";
 import { api } from "../api";
 
@@ -22,7 +23,7 @@ const fmt = (iso) =>
   });
 
 /** 查各班庫存：清單風格對齊公庫，點品項可看明細 */
-export default function ClassStockPage({ classes, items, stock, toast }) {
+export default function ClassStockPage({ classes, items, stock, reload, toast }) {
   const [classId, setClassId] = useState(() => {
     const saved = Number(localStorage.getItem(LAST_CLASS_KEY));
     return Number.isInteger(saved) && saved > 0 ? saved : null;
@@ -33,6 +34,7 @@ export default function ClassStockPage({ classes, items, stock, toast }) {
   });
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState(null); // { id, name, unit, qty }
+  const [adding, setAdding] = useState(false);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -54,10 +56,12 @@ export default function ClassStockPage({ classes, items, stock, toast }) {
       .filter((s) => s.class_id === classId && s.qty > 0)
       .map((s) => {
         const item = itemById.get(s.item_id);
-        return item ? { id: item.id, name: item.name, unit: item.unit, qty: s.qty } : null;
+        return item
+          ? { id: item.id, name: item.name, unit: item.unit, qty: s.qty, sort: item.sort ?? 0 }
+          : null;
       })
       .filter(Boolean)
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+      .sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "zh-Hant"));
   }, [classId, stock, itemById]);
 
   const kw = keyword.trim();
@@ -69,12 +73,31 @@ export default function ClassStockPage({ classes, items, stock, toast }) {
     return (
       <div className="space-y-4 pb-4">
         <section>
-          <h2 className="mb-2 text-sm font-extrabold text-slate-500">選班級看庫存</h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-extrabold text-slate-500">選班級看庫存</h2>
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="rounded-xl bg-sky2-500 px-3 py-1.5 text-xs font-extrabold text-white active:scale-95"
+            >
+              ＋新增班級
+            </button>
+          </div>
           <ClassPicker classes={classes} value={classId} onChange={pickClass} tone="sky" />
         </section>
         {!classId ? (
           <p className="py-12 text-center text-sm font-bold text-slate-400">點一個班級開始</p>
         ) : null}
+
+        <AddClassSheet
+          open={adding}
+          onClose={() => setAdding(false)}
+          onCreated={async (row) => {
+            await reload();
+            pickClass(row.id);
+          }}
+          toast={toast}
+        />
       </div>
     );
   }

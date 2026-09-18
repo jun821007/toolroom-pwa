@@ -19,6 +19,7 @@ create table if not exists public.items (
   name   text not null unique,
   unit   text not null default '個',
   qty    integer not null default 0 check (qty >= 0),   -- 公庫現存量
+  sort   integer not null default 0,                    -- 顯示順序（小的在前）
   active boolean not null default true
 );
 
@@ -53,6 +54,9 @@ alter table public.classes     enable row level security;
 alter table public.items       enable row level security;
 alter table public.class_stock enable row level security;
 alter table public.logs        enable row level security;
+
+-- 舊專案升級：補上 items.sort（新專案 create table 已含）
+alter table public.items add column if not exists sort integer not null default 0;
 
 -- ---------------------------------------------------------------------
 -- RPC 1：公庫補貨
@@ -260,27 +264,28 @@ insert into public.classes (name, sort) values
 on conflict (name) do update set sort = excluded.sort;
 
 -- 工具室現有庫存（大垃圾袋 7+1=8；小垃圾袋 3*31+1=94）
-insert into public.items (name, unit, qty) values
-  ('殺蟲劑',           '罐',  43),
-  ('漂白水',           '瓶',   4),
-  ('漱口水',           '瓶',   1),
-  ('大垃圾袋',         '包',   8),
-  ('小垃圾袋',         '包',  94),
-  ('浴廁清潔劑',       '瓶',  26),
-  ('抹布',             '條',   7),
-  ('拖把(擰乾式)',     '支',   5),
-  ('拖把',             '支',  15),
-  ('紅垃圾桶',         '個',  12),
-  ('藍垃圾桶',         '個',   8),
-  ('短夾',             '支', 103),
-  ('長夾',             '支',   1),
-  ('籃子',             '個',   2),
-  ('竹掃把',           '支',  14),
-  ('掃把',             '支',   6),
-  ('畚斗',             '個',  26),
-  ('可裝擰水器的水桶', '個',  10),
-  ('擰水器',           '個',  11),
-  ('水桶',             '個',   7),
-  ('馬桶通',           '支',   1),
-  ('馬桶刷',           '支',   1)
-on conflict (name) do nothing;
+-- sort 決定公庫／發放清單的顯示順序
+insert into public.items (name, unit, qty, sort) values
+  ('殺蟲劑',           '罐',  43,  1),
+  ('漂白水',           '瓶',   4,  2),
+  ('漱口水',           '瓶',   1,  3),
+  ('大垃圾袋',         '包',   8,  4),
+  ('小垃圾袋',         '包',  94,  5),
+  ('浴廁清潔劑',       '瓶',  26,  6),
+  ('抹布',             '條',   7,  7),
+  ('拖把(擰乾式)',     '支',   5,  8),
+  ('拖把',             '支',  15,  9),
+  ('紅垃圾桶',         '個',  12, 10),
+  ('藍垃圾桶',         '個',   8, 11),
+  ('短夾',             '支', 103, 12),
+  ('長夾',             '支',   1, 13),
+  ('籃子',             '個',   2, 14),
+  ('竹掃把',           '支',  14, 15),
+  ('掃把',             '支',   6, 16),
+  ('畚斗',             '個',  26, 17),
+  ('可裝擰水器的水桶', '個',  10, 18),
+  ('擰水器',           '個',  11, 19),
+  ('水桶',             '個',   7, 20),
+  ('馬桶通',           '支',   1, 21),
+  ('馬桶刷',           '支',   1, 22)
+on conflict (name) do update set sort = excluded.sort;

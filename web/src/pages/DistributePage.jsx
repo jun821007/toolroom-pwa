@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ClassPicker from "../components/ClassPicker";
+import AddClassSheet from "../components/AddClassSheet";
 import ItemPicker from "../components/ItemPicker";
 import { api } from "../api";
 
@@ -9,8 +10,11 @@ export default function DistributePage({ classes, items, reload, toast }) {
   const [picked, setPicked] = useState({});
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-  const options = items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, available: i.qty }));
+  const options = [...items]
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.name.localeCompare(b.name, "zh-Hant"))
+    .map((i) => ({ id: i.id, name: i.name, unit: i.unit, available: i.qty }));
   const lines = Object.entries(picked).map(([id, qty]) => ({ item_id: Number(id), qty }));
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   const target = classes.find((c) => c.id === toClass);
@@ -33,7 +37,16 @@ export default function DistributePage({ classes, items, reload, toast }) {
   return (
     <div className="space-y-4 pb-28">
       <section>
-        <h2 className="mb-2 text-sm font-extrabold text-slate-500">① 發給哪一班？</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-extrabold text-slate-500">① 發給哪一班？</h2>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="rounded-xl bg-sky2-500 px-3 py-1.5 text-xs font-extrabold text-white active:scale-95"
+          >
+            ＋新增班級
+          </button>
+        </div>
         <ClassPicker classes={classes} value={toClass} onChange={setToClass} tone="sky" />
       </section>
 
@@ -69,6 +82,16 @@ export default function DistributePage({ classes, items, reload, toast }) {
           </button>
         </div>
       ) : null}
+
+      <AddClassSheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={async (row) => {
+          await reload();
+          setToClass(row.id);
+        }}
+        toast={toast}
+      />
     </div>
   );
 }

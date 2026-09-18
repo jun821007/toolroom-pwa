@@ -2,16 +2,24 @@ import { useMemo, useState } from "react";
 import Sheet from "../components/Sheet";
 import { api } from "../api";
 
-/** 衛生組公庫：品項清單、快速補貨、新增／編輯品項 */
+/** 衛生組公庫：品項清單、排序、快速補貨、新增／編輯品項 */
 export default function StockPage({ items, reload, toast }) {
   const [keyword, setKeyword] = useState("");
   const [sheet, setSheet] = useState(null); // { mode:'restock'|'create'|'edit', item }
   const [busy, setBusy] = useState(false);
+  const [sorting, setSorting] = useState(false);
 
   const kw = keyword.trim();
+  const searching = Boolean(kw);
+
+  // 後端已依 sort 排好；本地再排一次以防萬一
+  const ordered = useMemo(
+    () => [...items].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.name.localeCompare(b.name, "zh-Hant")),
+    [items]
+  );
   const visible = useMemo(
-    () => (kw ? items.filter((i) => i.name.includes(kw)) : items),
-    [items, kw]
+    () => (searching ? ordered.filter((i) => i.name.includes(kw)) : ordered),
+    [ordered, searching, kw]
   );
   const total = items.reduce((s, i) => s + i.qty, 0);
 
@@ -22,6 +30,25 @@ export default function StockPage({ items, reload, toast }) {
       setSheet(null);
       await reload();
       toast({ ok: true, msg: okMsg });
+    } catch (err) {
+      toast({ ok: false, msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const move = async (index, dir) => {
+    if (searching || busy) return;
+    const next = index + dir;
+    if (next < 0 || next >= ordered.length) return;
+
+    const ids = ordered.map((i) => i.id);
+    [ids[index], ids[next]] = [ids[next], ids[index]];
+
+    setBusy(true);
+    try {
+      await api.reorderItems(ids);
+      await reload();
     } catch (err) {
       toast({ ok: false, msg: err.message });
     } finally {
@@ -48,21 +75,66 @@ export default function StockPage({ items, reload, toast }) {
           onChange={(e) => setKeyword(e.target.value)}
           placeholder="搜尋工具…"
           className="field"
+          disabled={sorting}
         />
-        <button className="btn-mint shrink-0 px-4" onClick={() => setSheet({ mode: "create" })}>
-          ＋
+        <button
+          type="button"
+          className={`shrink-0 rounded-2xl px-3 text-sm font-extrabold active:scale-95 ${
+            sorting ? "bg-zest-500 text-white" : "bg-white text-slate-600 shadow-card"
+          }`}
+          onClick={() => {
+            setSorting((v) => !v);
+            setKeyword("");
+          }}
+        >
+          {sorting ? "完成" : "排序"}
         </button>
+        {!sorting ? (
+          <button className="btn-mint shrink-0 px-4" onClick={() => setSheet({ mode: "create" })}>
+            ＋
+          </button>
+        ) : null}
       </div>
 
+      {sorting ? (
+        <p className="text-xs font-bold text-zest-600">用 ▲▼ 調整順序，發放／調貨清單也會跟著變</p>
+      ) : null}
+
       <div className="space-y-2">
-        {visible.map((item) => (
-          <div key={item.id} className="card flex items-center gap-3 px-4 py-3">
+        {visible.map((item, index) => (
+          <div key={item.id} className="card flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+            {sorting ? (
+              <div className="flex shrink-0 flex-col gap-1">
+                <button
+                  type="button"
+                  disabled={busy || index === 0}
+                  onClick={() => move(index, -1)}
+                  className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-600 disabled:opacity-30 active:scale-95"
+                  aria-label="上移"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || index === ordered.length - 1}
+                  onClick={() => move(index, 1)}
+                  className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-600 disabled:opacity-30 active:scale-95"
+                  aria-label="下移"
+                >
+                  ▼
+                </button>
+              </div>
+            ) : null}
+
             <button
               className="min-w-0 flex-1 text-left"
-              onClick={() => setSheet({ mode: "edit", item })}
+              onClick={() => !sorting && setSheet({ mode: "edit", item })}
+              disabled={sorting}
             >
               <span className="block truncate text-base font-bold text-slate-800">{item.name}</span>
-              <span className="text-xs font-bold text-slate-400">點一下可改名稱或單位</span>
+              <span className="text-xs font-bold text-slate-400">
+                {sorting ? `第 ${index + 1} 位` : "點一下可改名稱或單位"}
+              </span>
             </button>
 
             <span
@@ -74,12 +146,14 @@ export default function StockPage({ items, reload, toast }) {
               <span className="ml-0.5 text-xs font-bold text-slate-400">{item.unit}</span>
             </span>
 
-            <button
-              className="shrink-0 rounded-xl bg-mint-500 px-3 py-2.5 text-sm font-extrabold text-white active:scale-95"
-              onClick={() => setSheet({ mode: "restock", item })}
-            >
-              補貨
-            </button>
+            {!sorting ? (
+              <button
+                className="shrink-0 rounded-xl bg-mint-500 px-3 py-2.5 text-sm font-extrabold text-white active:scale-95"
+                onClick={() => setSheet({ mode: "restock", item })}
+              >
+                補貨
+              </button>
+            ) : null}
           </div>
         ))}
 

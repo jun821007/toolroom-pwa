@@ -50,8 +50,12 @@ export const api = {
   createItem: (body) => request("/api/items", { method: "POST", body: JSON.stringify(body) }),
   updateItem: (id, body) => request(`/api/items/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteItem: (id) => request(`/api/items/${id}`, { method: "DELETE" }),
+  reorderItems: (ordered_ids) =>
+    request("/api/items/reorder", { method: "PUT", body: JSON.stringify({ ordered_ids }) }),
   restock: (id, body) =>
     request(`/api/items/${id}/restock`, { method: "POST", body: JSON.stringify(body) }),
+
+  createClass: (body) => request("/api/classes", { method: "POST", body: JSON.stringify(body) }),
 
   distribute: (body) => request("/api/distribute", { method: "POST", body: JSON.stringify(body) }),
   transfer: (body) => request("/api/transfer", { method: "POST", body: JSON.stringify(body) }),

@@ -123,7 +123,9 @@ npm run dev -- --host 127.0.0.1
 | GET | `/api/health` | 健康檢查＋診斷金鑰與各表筆數（不需登入） |
 | GET | `/api/bootstrap` | 一次回傳班級 + 公庫品項 + 各班持有量 |
 | GET | `/api/logs?kind=&class_id=&item_id=` | 流水帳 |
+| POST | `/api/classes` | 新增班級／地點 `{ name }` |
 | POST | `/api/items` | 新增品項 `{ name, unit, qty }` |
+| PUT | `/api/items/reorder` | 調整顯示順序 `{ ordered_ids:[…] }` |
 | PUT | `/api/items/:id` | 改名稱／單位 |
 | DELETE | `/api/items/:id` | 停用品項（保留歷史流水） |
 | POST | `/api/items/:id/restock` | 補貨 `{ qty, note }` |
