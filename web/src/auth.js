@@ -10,8 +10,22 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+/**
+ * 只留專案根網址。Dashboard 常給人複製成 …/rest/v1/，貼進這裡會變成
+ * …/rest/v1/auth/v1/token → 立刻噴「Invalid path specified in request URL」。
+ */
+function normalizeProjectUrl(raw) {
+  if (!raw) return "";
+  try {
+    const u = new URL(String(raw).trim());
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return String(raw).trim().replace(/\/+$/, "").replace(/\/(rest|auth)\/v1.*$/i, "");
+  }
+}
+
+const url = normalizeProjectUrl(import.meta.env.VITE_SUPABASE_URL);
+const key = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
 export const authConfigured = Boolean(url && key);
 
@@ -50,5 +64,7 @@ function translate(msg = "") {
   if (/Email not confirmed/i.test(msg)) return "這個帳號還沒完成驗證，請到 Supabase 後台把它設為已確認";
   if (/Too many requests|rate limit/i.test(msg)) return "嘗試太多次了，請等幾分鐘再試";
   if (/Failed to fetch|NetworkError/i.test(msg)) return "連不上登入伺服器，請確認網路";
+  if (/Invalid path specified/i.test(msg))
+    return "VITE_SUPABASE_URL 貼錯了：只要 https://xxxx.supabase.co，不要加 /rest/v1";
   return msg;
 }
