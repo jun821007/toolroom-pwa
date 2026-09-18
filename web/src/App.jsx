@@ -3,6 +3,7 @@ import { api, AuthExpiredError } from "./api";
 import { supabase, authConfigured, signOut } from "./auth";
 import Toast from "./components/Toast";
 import StockPage from "./pages/StockPage";
+import ClassStockPage from "./pages/ClassStockPage";
 import DistributePage from "./pages/DistributePage";
 import TransferPage from "./pages/TransferPage";
 import LogsPage from "./pages/LogsPage";
@@ -10,6 +11,7 @@ import LoginPage from "./pages/LoginPage";
 
 const TABS = [
   { key: "stock", label: "公庫", icon: "🧰" },
+  { key: "class", label: "班級", icon: "🏫" },
   { key: "give", label: "發放", icon: "🚚" },
   { key: "move", label: "調貨", icon: "🔄" },
   { key: "logs", label: "流水", icon: "🧾" },
@@ -118,6 +120,7 @@ export default function App() {
 
       <main className="px-4 pb-32 pt-1">
         {tab === "stock" ? <StockPage {...shared} /> : null}
+        {tab === "class" ? <ClassStockPage {...shared} /> : null}
         {tab === "give" ? <DistributePage {...shared} /> : null}
         {tab === "move" ? <TransferPage {...shared} /> : null}
         {tab === "logs" ? <LogsPage {...shared} /> : null}
