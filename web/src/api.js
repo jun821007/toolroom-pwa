@@ -29,7 +29,6 @@ async function request(path, options = {}) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
 
-  // 權杖失效就地登出，App 會收到狀態變化自動回到登入頁，各頁面不必各自處理
   if (res.status === 401) {
     await signOut();
     throw new AuthExpiredError(data?.error || "請重新登入");
@@ -56,12 +55,27 @@ export const api = {
     request(`/api/items/${id}/restock`, { method: "POST", body: JSON.stringify(body) }),
 
   createClass: (body) => request("/api/classes", { method: "POST", body: JSON.stringify(body) }),
+  updateClass: (id, body) => request(`/api/classes/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteClass: (id) => request(`/api/classes/${id}`, { method: "DELETE" }),
+  reorderClasses: (ordered_ids) =>
+    request("/api/classes/reorder", { method: "PUT", body: JSON.stringify({ ordered_ids }) }),
 
   classNotes: (classId) => request(`/api/classes/${classId}/notes`),
   addClassNote: (classId, body) =>
     request(`/api/classes/${classId}/notes`, { method: "POST", body: JSON.stringify(body) }),
+  updateClassNote: (classId, noteId, body) =>
+    request(`/api/classes/${classId}/notes/${noteId}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteClassNote: (classId, noteId) =>
+    request(`/api/classes/${classId}/notes/${noteId}`, { method: "DELETE" }),
   setClassStock: (classId, body) =>
     request(`/api/classes/${classId}/stock`, { method: "POST", body: JSON.stringify(body) }),
+
+  todos: () => request("/api/todos"),
+  createTodo: (body) => request("/api/todos", { method: "POST", body: JSON.stringify(body) }),
+  updateTodo: (id, body) => request(`/api/todos/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteTodo: (id) => request(`/api/todos/${id}`, { method: "DELETE" }),
+  reorderTodos: (ordered_ids) =>
+    request("/api/todos/reorder", { method: "PUT", body: JSON.stringify({ ordered_ids }) }),
 
   distribute: (body) => request("/api/distribute", { method: "POST", body: JSON.stringify(body) }),
   transfer: (body) => request("/api/transfer", { method: "POST", body: JSON.stringify(body) }),

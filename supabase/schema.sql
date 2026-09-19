@@ -1,8 +1,8 @@
 -- =====================================================================
 -- 衛生組工具室庫存管理系統 — 精簡版 Schema
 -- 貼到 Supabase Dashboard → SQL Editor → Run 即可（可重複執行）
--- 5 張表：items 公庫 / classes 班級 / class_stock 班級庫存 / logs 流水帳 / class_notes 備註
--- 4 支 RPC：restock 補貨 / distribute 發放 / transfer 跨班調貨 / set_class_stock 班級調整
+-- 6 張表：items / classes / class_stock / logs / class_notes / todos
+-- 4 支 RPC：restock / distribute / transfer / set_class_stock
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -33,8 +33,8 @@ create table if not exists public.class_stock (
 create table if not exists public.logs (
   id         bigserial primary key,
   kind       text    not null check (kind in ('RESTOCK', 'DISTRIBUTE', 'TRANSFER', 'ADJUST')),
-  from_class integer references public.classes(id),  -- NULL = 衛生組公庫
-  to_class   integer references public.classes(id),  -- NULL = 衛生組公庫
+  from_class integer references public.classes(id) on delete set null,  -- NULL = 衛生組公庫
+  to_class   integer references public.classes(id) on delete set null,  -- NULL = 衛生組公庫
   item_id    integer not null references public.items(id),
   qty        integer not null check (qty > 0),
   operator   text    not null default '未署名',
@@ -50,10 +50,22 @@ create table if not exists public.class_notes (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.todos (
+  id         serial primary key,
+  body       text not null check (btrim(body) <> ''),
+  done       boolean not null default false,
+  pinned     boolean not null default false,
+  sort       integer not null default 0,
+  operator   text not null default '未署名',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_logs_created on public.logs (created_at desc);
 create index if not exists idx_logs_item    on public.logs (item_id);
 create index if not exists idx_stock_class  on public.class_stock (class_id);
 create index if not exists idx_class_notes_class on public.class_notes (class_id, created_at desc);
+create index if not exists idx_todos_open on public.todos (done, pinned desc, sort, id);
 
 -- ---------------------------------------------------------------------
 -- 安全性：開 RLS 但不給任何政策
@@ -64,6 +76,7 @@ alter table public.items       enable row level security;
 alter table public.class_stock enable row level security;
 alter table public.logs        enable row level security;
 alter table public.class_notes enable row level security;
+alter table public.todos       enable row level security;
 
 -- 舊專案升級：補上 items.sort（新專案 create table 已含）
 alter table public.items add column if not exists sort integer not null default 0;

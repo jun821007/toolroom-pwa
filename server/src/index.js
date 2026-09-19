@@ -201,7 +201,7 @@ app.get("/api/health", async (_req, res) => {
   // 每張表幾筆，一眼看出 schema.sql 的 seed 有沒有真的寫進去
   try {
     const counts = {};
-    for (const t of ["classes", "items", "class_stock", "logs", "class_notes"]) {
+    for (const t of ["classes", "items", "class_stock", "logs", "class_notes", "todos"]) {
       const { count, error } = await db.from(t).select("*", { count: "exact", head: true });
       counts[t] = error ? `讀不到：${error.message}` : count;
     }
@@ -346,6 +346,46 @@ app.post(
   })
 );
 
+/** 班級顯示順序 */
+app.put(
+  "/api/classes/reorder",
+  handle(async (req, res) => {
+    const ids = req.body?.ordered_ids;
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("排序清單不能是空的");
+    const clean = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
+    for (let i = 0; i < clean.length; i++) {
+      await db.from("classes").update({ sort: (i + 1) * 10 }).eq("id", clean[i]).then(unwrap);
+    }
+    res.json({ ok: true, count: clean.length });
+  })
+);
+
+/** 改班級名稱 */
+app.put(
+  "/api/classes/:id",
+  handle(async (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    if (!name) throw new Error("請輸入班級名稱");
+    const row = await db
+      .from("classes")
+      .update({ name })
+      .eq("id", Number(req.params.id))
+      .select()
+      .single()
+      .then(unwrap);
+    res.json(row);
+  })
+);
+
+/** 刪班級（庫存／備註 cascade；流水帳保留，班級欄位變空） */
+app.delete(
+  "/api/classes/:id",
+  handle(async (req, res) => {
+    await db.from("classes").delete().eq("id", Number(req.params.id)).then(unwrap);
+    res.json({ ok: true });
+  })
+);
+
 /** 停用品項：保留歷史流水，只是不再出現在清單 */
 app.delete(
   "/api/items/:id",
@@ -449,6 +489,36 @@ app.post(
   })
 );
 
+app.put(
+  "/api/classes/:id/notes/:noteId",
+  handle(async (req, res) => {
+    const body = String(req.body?.body || "").trim();
+    if (!body) throw new Error("請輸入文字");
+    const row = await db
+      .from("class_notes")
+      .update({ body, operator: req.operator })
+      .eq("id", Number(req.params.noteId))
+      .eq("class_id", Number(req.params.id))
+      .select()
+      .single()
+      .then(unwrap);
+    res.json(row);
+  })
+);
+
+app.delete(
+  "/api/classes/:id/notes/:noteId",
+  handle(async (req, res) => {
+    await db
+      .from("class_notes")
+      .delete()
+      .eq("id", Number(req.params.noteId))
+      .eq("class_id", Number(req.params.id))
+      .then(unwrap);
+    res.json({ ok: true });
+  })
+);
+
 /** 班級起始／調整貨量（絕對值，不扣公庫） */
 app.post(
   "/api/classes/:id/stock",
@@ -463,6 +533,115 @@ app.post(
       .then(unwrap);
 
     res.json({ ok: true, count });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/* 待辦事項                                                            */
+/* ------------------------------------------------------------------ */
+
+app.get(
+  "/api/todos",
+  handle(async (_req, res) => {
+    const rows = await db
+      .from("todos")
+      .select("id,body,done,pinned,sort,operator,created_at,updated_at")
+      .order("done")
+      .order("pinned", { ascending: false })
+      .order("sort")
+      .order("id")
+      .then(unwrap);
+    res.json(rows);
+  })
+);
+
+app.post(
+  "/api/todos",
+  handle(async (req, res) => {
+    const body = String(req.body?.body || "").trim();
+    if (!body) throw new Error("請輸入待辦內容");
+
+    const open = await db
+      .from("todos")
+      .select("sort")
+      .eq("done", false)
+      .order("sort", { ascending: false })
+      .limit(1)
+      .then(unwrap);
+    const sort = (open?.[0]?.sort ?? 0) + 1;
+
+    const row = await db
+      .from("todos")
+      .insert({
+        body,
+        done: false,
+        pinned: Boolean(req.body?.pinned),
+        sort,
+        operator: req.operator,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+      .then(unwrap);
+
+    res.json(row);
+  })
+);
+
+app.put(
+  "/api/todos/reorder",
+  handle(async (req, res) => {
+    const ids = req.body?.ordered_ids;
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("排序清單不能是空的");
+    const clean = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
+    for (let i = 0; i < clean.length; i++) {
+      await db
+        .from("todos")
+        .update({ sort: i + 1, updated_at: new Date().toISOString() })
+        .eq("id", clean[i])
+        .then(unwrap);
+    }
+    res.json({ ok: true, count: clean.length });
+  })
+);
+
+app.put(
+  "/api/todos/:id",
+  handle(async (req, res) => {
+    const id = Number(req.params.id);
+    const patch = { updated_at: new Date().toISOString() };
+
+    if (req.body?.body !== undefined) {
+      const body = String(req.body.body || "").trim();
+      if (!body) throw new Error("請輸入待辦內容");
+      patch.body = body;
+    }
+    if (req.body?.done !== undefined) patch.done = Boolean(req.body.done);
+    if (req.body?.pinned !== undefined) patch.pinned = Boolean(req.body.pinned);
+
+    // 勾完成／取消完成時，排到該組末尾
+    if (req.body?.done !== undefined) {
+      const group = await db
+        .from("todos")
+        .select("sort")
+        .eq("done", Boolean(req.body.done))
+        .order("sort", { ascending: false })
+        .limit(1)
+        .then(unwrap);
+      patch.sort = (group?.[0]?.sort ?? 0) + 1;
+      if (req.body.done) patch.pinned = false; // 完成的不置頂
+    }
+
+    const row = await db.from("todos").update(patch).eq("id", id).select().single().then(unwrap);
+    res.json(row);
+  })
+);
+
+app.delete(
+  "/api/todos/:id",
+  handle(async (req, res) => {
+    await db.from("todos").delete().eq("id", Number(req.params.id)).then(unwrap);
+    res.json({ ok: true });
   })
 );
 

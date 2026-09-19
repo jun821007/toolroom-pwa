@@ -6,6 +6,7 @@ import StockPage from "./pages/StockPage";
 import ClassStockPage from "./pages/ClassStockPage";
 import DistributePage from "./pages/DistributePage";
 import TransferPage from "./pages/TransferPage";
+import TodoPage from "./pages/TodoPage";
 import LogsPage from "./pages/LogsPage";
 import LoginPage from "./pages/LoginPage";
 
@@ -14,6 +15,7 @@ const TABS = [
   { key: "class", label: "班級", icon: "🏫" },
   { key: "give", label: "發放", icon: "🚚" },
   { key: "move", label: "調貨", icon: "🔄" },
+  { key: "todo", label: "待辦", icon: "✅" },
   { key: "logs", label: "流水", icon: "🧾" },
 ];
 
@@ -123,6 +125,7 @@ export default function App() {
         {tab === "class" ? <ClassStockPage {...shared} /> : null}
         {tab === "give" ? <DistributePage {...shared} /> : null}
         {tab === "move" ? <TransferPage {...shared} /> : null}
+        {tab === "todo" ? <TodoPage toast={setToast} /> : null}
         {tab === "logs" ? <LogsPage {...shared} /> : null}
       </main>
 
@@ -134,11 +137,11 @@ export default function App() {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-extrabold transition ${
+                className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-extrabold transition sm:text-xs ${
                   active ? "text-mint-600" : "text-slate-400"
                 }`}
               >
-                <span className={`text-2xl transition ${active ? "scale-110" : ""}`}>{t.icon}</span>
+                <span className={`text-xl transition sm:text-2xl ${active ? "scale-110" : ""}`}>{t.icon}</span>
                 {t.label}
               </button>
             );

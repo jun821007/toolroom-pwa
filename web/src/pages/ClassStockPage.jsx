@@ -1,7 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import ClassPicker from "../components/ClassPicker";
 import AddClassSheet from "../components/AddClassSheet";
 import Sheet from "../components/Sheet";
+import { SortableItem, arrayMove } from "../components/SortableItem";
 import { api } from "../api";
 
 const LAST_CLASS_KEY = "toolroom_last_class";
@@ -34,7 +44,6 @@ const fmtFull = (iso) =>
     hour12: false,
   });
 
-/** 查各班庫存：備註、起始貨量、品項明細 */
 export default function ClassStockPage({ classes, items, stock, reload, toast }) {
   const [classId, setClassId] = useState(() => {
     const saved = Number(localStorage.getItem(LAST_CLASS_KEY));
@@ -47,12 +56,22 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [sortingClasses, setSortingClasses] = useState(false);
+  const [localClasses, setLocalClasses] = useState(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } })
+  );
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const classList = localClasses ?? classes;
 
   const pickClass = (id) => {
     setClassId(id);
@@ -60,6 +79,7 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
     setDetail(null);
     setNotesOpen(false);
     setAdjustOpen(false);
+    setManageOpen(false);
     if (id) {
       localStorage.setItem(LAST_CLASS_KEY, String(id));
       setPicking(false);
@@ -85,6 +105,31 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
     else setNotes([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, picking]);
+
+  const onClassDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || busy) return;
+    const oldIndex = classList.findIndex((c) => c.id === active.id);
+    const newIndex = classList.findIndex((c) => c.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(classList, oldIndex, newIndex).map((c, i) => ({
+      ...c,
+      sort: (i + 1) * 10,
+    }));
+    setLocalClasses(next);
+    setBusy(true);
+    try {
+      await api.reorderClasses(next.map((c) => c.id));
+      await reload();
+      setLocalClasses(null);
+    } catch (err) {
+      toast?.({ ok: false, msg: err.message });
+      setLocalClasses(null);
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const rows = useMemo(() => {
     if (!classId) return [];
@@ -112,17 +157,55 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold text-slate-500">選班級看庫存</h2>
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="rounded-xl bg-sky2-500 px-3 py-1.5 text-xs font-extrabold text-white active:scale-95"
-            >
-              ＋新增班級
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSortingClasses((v) => !v);
+                  setLocalClasses(null);
+                }}
+                className={`rounded-xl px-3 py-1.5 text-xs font-extrabold active:scale-95 ${
+                  sortingClasses ? "bg-zest-500 text-white" : "bg-white text-slate-600 shadow-card"
+                }`}
+              >
+                {sortingClasses ? "完成排序" : "排序"}
+              </button>
+              {!sortingClasses ? (
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  className="rounded-xl bg-sky2-500 px-3 py-1.5 text-xs font-extrabold text-white active:scale-95"
+                >
+                  ＋新增
+                </button>
+              ) : null}
+            </div>
           </div>
-          <ClassPicker classes={classes} value={classId} onChange={pickClass} tone="sky" />
+
+          {sortingClasses ? (
+            <>
+              <p className="mb-2 text-xs font-bold text-zest-600">按住 ⋮⋮ 拖曳調整班級順序</p>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
+                <SortableContext
+                  items={classList.map((c) => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {classList.map((c) => (
+                      <SortableItem key={c.id} id={c.id} className="card px-2 py-2">
+                        <p className="py-2 text-sm font-bold text-slate-800">{c.name}</p>
+                      </SortableItem>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </>
+          ) : (
+            <ClassPicker classes={classes} value={classId} onChange={pickClass} tone="sky" />
+          )}
         </section>
-        {!classId ? (
+
+        {!classId && !sortingClasses ? (
           <p className="py-12 text-center text-sm font-bold text-slate-400">點一個班級開始</p>
         ) : null}
 
@@ -141,11 +224,11 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
 
   return (
     <div className="space-y-3 pb-4">
-      <div className="card flex items-center justify-between gap-3 px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-400">目前查看</p>
+      <div className="card flex items-center justify-between gap-2 px-4 py-3">
+        <button type="button" onClick={() => setManageOpen(true)} className="min-w-0 flex-1 text-left">
+          <p className="text-xs font-bold text-slate-400">目前查看（點名稱可改名／刪除）</p>
           <p className="truncate text-lg font-extrabold text-slate-800">{selected?.name}</p>
-        </div>
+        </button>
         <button
           type="button"
           onClick={() => setPicking(true)}
@@ -174,7 +257,6 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
         調整起始貨量
       </button>
 
-      {/* 備註：預設只看最新；點開看歷史＋新增 */}
       <button
         type="button"
         onClick={() => setNotesOpen(true)}
@@ -277,13 +359,96 @@ export default function ClassStockPage({ classes, items, stock, reload, toast })
           toast={toast}
         />
       ) : null}
+
+      {manageOpen && selected ? (
+        <ManageClassSheet
+          klass={selected}
+          onClose={() => setManageOpen(false)}
+          onRenamed={async (name) => {
+            await api.updateClass(selected.id, { name });
+            toast?.({ ok: true, msg: "已改名" });
+            setManageOpen(false);
+            await reload();
+          }}
+          onDeleted={async () => {
+            if (!confirm(`確定刪除「${selected.name}」？\n該班庫存與備註會一起刪掉，流水帳會保留。`))
+              return;
+            await api.deleteClass(selected.id);
+            toast?.({ ok: true, msg: "已刪除班級" });
+            localStorage.removeItem(LAST_CLASS_KEY);
+            setClassId(null);
+            setPicking(true);
+            setManageOpen(false);
+            await reload();
+          }}
+          toast={toast}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function ManageClassSheet({ klass, onClose, onRenamed, onDeleted, toast }) {
+  const [name, setName] = useState(klass.name);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Sheet
+      open
+      title="班級設定"
+      onClose={onClose}
+      footer={
+        <div className="space-y-2">
+          <button
+            className="btn-mint w-full"
+            disabled={busy || !name.trim() || name.trim() === klass.name}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onRenamed(name.trim());
+              } catch (err) {
+                toast?.({ ok: false, msg: err.message });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "儲存中…" : "儲存新名稱"}
+          </button>
+          <button
+            className="btn-plain w-full text-rose-500"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onDeleted();
+              } catch (err) {
+                toast?.({ ok: false, msg: err.message });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            刪除此班級
+          </button>
+        </div>
+      }
+    >
+      <label className="mb-1 block text-sm font-bold text-slate-500">名稱</label>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="field text-center text-lg font-extrabold"
+      />
+    </Sheet>
   );
 }
 
 function NotesSheet({ className, classId, notes, onClose, onRefresh, toast }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null); // note | null
 
   const submit = async () => {
     const clean = body.trim();
@@ -321,26 +486,143 @@ function NotesSheet({ className, classId, notes, onClose, onRefresh, toast }) {
         className="field resize-none"
       />
 
-      <h3 className="mb-2 mt-4 text-sm font-extrabold text-slate-500">歷史紀錄</h3>
+      <h3 className="mb-2 mt-4 text-sm font-extrabold text-slate-500">
+        歷史紀錄 <span className="font-bold text-slate-400">（長按可改／刪）</span>
+      </h3>
       {notes.length === 0 ? (
         <p className="py-6 text-center text-sm font-bold text-slate-400">還沒有歷史備註</p>
       ) : (
         <div className="space-y-2">
           {notes.map((n) => (
-            <div key={n.id} className="rounded-2xl border border-slate-100 px-3 py-3">
-              <p className="whitespace-pre-wrap text-sm font-bold text-slate-800">{n.body}</p>
-              <p className="mt-1 text-[11px] font-bold text-slate-400">
-                {fmtFull(n.created_at)}｜{n.operator}
-              </p>
-            </div>
+            <LongPressNote
+              key={n.id}
+              note={n}
+              onLongPress={() => setEditing(n)}
+            />
           ))}
         </div>
       )}
+
+      {editing ? (
+        <EditNoteSheet
+          note={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (text) => {
+            await api.updateClassNote(classId, editing.id, { body: text });
+            toast?.({ ok: true, msg: "已更新備註" });
+            setEditing(null);
+            await onRefresh();
+          }}
+          onDelete={async () => {
+            if (!confirm("確定刪除這筆備註？")) return;
+            await api.deleteClassNote(classId, editing.id);
+            toast?.({ ok: true, msg: "已刪除備註" });
+            setEditing(null);
+            await onRefresh();
+          }}
+          toast={toast}
+        />
+      ) : null}
     </Sheet>
   );
 }
 
-/** 一次設定多個品項的絕對數量（不扣公庫） */
+function LongPressNote({ note, onLongPress }) {
+  const timer = useRef(null);
+  const moved = useRef(false);
+
+  const start = () => {
+    moved.current = false;
+    timer.current = setTimeout(() => onLongPress(), 450);
+  };
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+
+  return (
+    <div
+      className="select-none rounded-2xl border border-slate-100 px-3 py-3 active:bg-slate-50"
+      onTouchStart={start}
+      onTouchMove={() => {
+        moved.current = true;
+        clear();
+      }}
+      onTouchEnd={clear}
+      onTouchCancel={clear}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onLongPress();
+      }}
+      onMouseDown={start}
+      onMouseUp={clear}
+      onMouseLeave={clear}
+    >
+      <p className="whitespace-pre-wrap text-sm font-bold text-slate-800">{note.body}</p>
+      <p className="mt-1 text-[11px] font-bold text-slate-400">
+        {fmtFull(note.created_at)}｜{note.operator}
+      </p>
+    </div>
+  );
+}
+
+function EditNoteSheet({ note, onClose, onSave, onDelete, toast }) {
+  const [text, setText] = useState(note.body);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Sheet
+      open
+      title="編輯備註"
+      onClose={onClose}
+      footer={
+        <div className="space-y-2">
+          <button
+            className="btn-mint w-full"
+            disabled={busy || !text.trim()}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onSave(text.trim());
+              } catch (err) {
+                toast?.({ ok: false, msg: err.message });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "儲存中…" : "儲存修改"}
+          </button>
+          <button
+            className="btn-plain w-full text-rose-500"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onDelete();
+              } catch (err) {
+                toast?.({ ok: false, msg: err.message });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            刪除這筆備註
+          </button>
+        </div>
+      }
+    >
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        className="field resize-none"
+      />
+    </Sheet>
+  );
+}
+
 function AdjustStockSheet({ classId, className, items, stock, onClose, onSaved, toast }) {
   const current = useMemo(() => {
     const map = new Map();
@@ -402,7 +684,7 @@ function AdjustStockSheet({ classId, className, items, stock, onClose, onSaved, 
       }
     >
       <p className="mb-3 text-sm font-bold text-slate-500">
-        直接填這班「現在應該有多少」。不會從公庫扣除，適合登記起始貨量或盤點修正。
+        直接填這班「現在應該有多少」。不會從公庫扣除。
       </p>
       <input
         value={keyword}
@@ -480,9 +762,7 @@ function ItemDetailSheet({ classId, className, item, classes, onClose, toast }) 
           <span className="ml-1 text-base font-bold text-slate-400">{item.unit}</span>
         </p>
       </div>
-
       <h3 className="mb-2 text-sm font-extrabold text-slate-500">異動明細</h3>
-
       {loading ? (
         <p className="py-8 text-center text-sm font-bold text-slate-400">載入中…</p>
       ) : logs.length === 0 ? (
@@ -514,17 +794,7 @@ function ItemDetailSheet({ classId, className, item, classes, onClose, toast }) 
                       <p className="mt-0.5 text-xs font-bold text-slate-400">備註：{log.note}</p>
                     ) : null}
                   </div>
-                  <span
-                    className={`shrink-0 text-lg font-extrabold tabular-nums ${
-                      log.kind === "ADJUST"
-                        ? "text-violet-600"
-                        : intoThis && !outOfThis
-                          ? "text-mint-600"
-                          : outOfThis && !intoThis
-                            ? "text-zest-600"
-                            : "text-slate-700"
-                    }`}
-                  >
+                  <span className="shrink-0 text-lg font-extrabold tabular-nums text-slate-700">
                     {log.kind === "ADJUST"
                       ? `Δ${log.qty}`
                       : `${intoThis && !outOfThis ? "+" : outOfThis && !intoThis ? "−" : ""}${log.qty}`}
