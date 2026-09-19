@@ -80,8 +80,9 @@ async function verifyToken(token) {
   const user = await res.json();
   if (!user?.id) return null;
 
-  if (tokenCache.size > 100) tokenCache.clear(); // 權杖會輪替，別讓它無限長大
-  tokenCache.set(token, { user, expires: Date.now() + 60_000 });
+  // 權杖快取只留很短：改顯示名稱後要立刻反映在經手人
+  if (tokenCache.size > 100) tokenCache.clear();
+  tokenCache.set(token, { user, expires: Date.now() + 5_000 });
   return user;
 }
 

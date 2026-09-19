@@ -58,6 +58,19 @@ export async function signOut() {
   await supabase?.auth.signOut();
 }
 
+/** 自訂顯示名稱（寫進 Auth user_metadata.name，流水帳經手人會用這個） */
+export async function updateDisplayName(name) {
+  const clean = String(name || "").trim();
+  if (!clean) throw new Error("請輸入顯示名稱");
+  if (!supabase) throw new Error("登入尚未設定");
+
+  const { data, error } = await supabase.auth.updateUser({
+    data: { name: clean },
+  });
+  if (error) throw new Error(translate(error.message));
+  return data.user;
+}
+
 /** Supabase 的錯誤訊息是英文，換成看得懂的話 */
 function translate(msg = "") {
   if (/Invalid login credentials/i.test(msg)) return "帳號或密碼不對";

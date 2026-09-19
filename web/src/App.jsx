@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, AuthExpiredError } from "./api";
-import { supabase, authConfigured, signOut } from "./auth";
+import { supabase, authConfigured, signOut, updateDisplayName } from "./auth";
 import Toast from "./components/Toast";
+import Sheet from "./components/Sheet";
 import StockPage from "./pages/StockPage";
 import ClassStockPage from "./pages/ClassStockPage";
 import DistributePage from "./pages/DistributePage";
@@ -24,6 +25,7 @@ export default function App() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // undefined = 還在確認有沒有登入紀錄，null = 沒登入
   const [session, setSession] = useState(undefined);
@@ -110,9 +112,7 @@ export default function App() {
             🧹 衛生組工具室
           </h1>
           <button
-            onClick={() => {
-              if (confirm(`要登出「${operator}」嗎？`)) signOut();
-            }}
+            onClick={() => setProfileOpen(true)}
             className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-500 shadow-card"
           >
             {operator}
@@ -150,7 +150,78 @@ export default function App() {
       </nav>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {profileOpen ? (
+        <ProfileSheet
+          name={operator}
+          email={data.me?.email}
+          onClose={() => setProfileOpen(false)}
+          onSaved={async () => {
+            setProfileOpen(false);
+            await reload();
+            setToast({ ok: true, msg: "顯示名稱已更新" });
+          }}
+          onError={(msg) => setToast({ ok: false, msg })}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function ProfileSheet({ name, email, onClose, onSaved, onError }) {
+  const [displayName, setDisplayName] = useState(name || "");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Sheet
+      open
+      title="帳號設定"
+      onClose={onClose}
+      footer={
+        <div className="space-y-2">
+          <button
+            className="btn-mint w-full"
+            disabled={busy || !displayName.trim() || displayName.trim() === name}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await updateDisplayName(displayName);
+                await onSaved();
+              } catch (err) {
+                onError(err.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "儲存中…" : "儲存顯示名稱"}
+          </button>
+          <button
+            className="btn-plain w-full text-rose-500"
+            disabled={busy}
+            onClick={() => {
+              if (confirm(`要登出「${name || "目前帳號"}」嗎？`)) signOut();
+            }}
+          >
+            登出
+          </button>
+        </div>
+      }
+    >
+      <p className="mb-3 text-sm font-bold text-slate-500">
+        顯示名稱會出現在右上角，也會當成流水帳的經手人。
+      </p>
+      <label className="mb-1 block text-sm font-bold text-slate-500">顯示名稱</label>
+      <input
+        autoFocus
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        placeholder="例如：小妹"
+        className="field text-center text-lg font-extrabold"
+      />
+      {email ? (
+        <p className="mt-3 text-center text-xs font-bold text-slate-400">登入帳號：{email}</p>
+      ) : null}
+    </Sheet>
   );
 }
 
