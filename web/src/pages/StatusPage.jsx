@@ -67,7 +67,7 @@ export default function StatusPage({ toast, onOpenClass }) {
     <div className="space-y-3 pb-4">
       <div>
         <h2 className="text-base font-extrabold text-slate-800">各班備註狀態</h2>
-        <p className="text-xs font-bold text-slate-400">新到舊｜點一筆可跳到該班</p>
+        <p className="text-xs font-bold text-slate-400">每班只顯示最新備註｜點一筆可跳到該班</p>
       </div>
 
       <div className="space-y-2">

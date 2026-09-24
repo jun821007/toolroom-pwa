@@ -472,7 +472,7 @@ app.post(
 app.get(
   "/api/notes",
   handle(async (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 100, 300);
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
     const rows = await db
       .from("class_notes")
       .select("id,class_id,body,operator,created_at,classes(id,name)")
@@ -480,16 +480,23 @@ app.get(
       .limit(limit)
       .then(unwrap);
 
-    res.json(
-      (rows || []).map((r) => ({
+    // 每個班級只留最新一筆（查詢已依時間新→舊）
+    const seen = new Set();
+    const latest = [];
+    for (const r of rows || []) {
+      if (seen.has(r.class_id)) continue;
+      seen.add(r.class_id);
+      latest.push({
         id: r.id,
         class_id: r.class_id,
         class_name: r.classes?.name ?? "（已刪班級）",
         body: r.body,
         operator: r.operator,
         created_at: r.created_at,
-      }))
-    );
+      });
+    }
+
+    res.json(latest);
   })
 );
 
