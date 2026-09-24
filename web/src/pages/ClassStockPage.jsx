@@ -14,7 +14,7 @@ import Sheet from "../components/Sheet";
 import { SortableItem, arrayMove } from "../components/SortableItem";
 import { api } from "../api";
 
-const LAST_CLASS_KEY = "toolroom_last_class";
+import { LAST_CLASS_KEY } from "../constants";
 
 const KINDS = {
   RESTOCK: { label: "進貨", chip: "bg-mint-100 text-mint-700" },

@@ -63,6 +63,11 @@ export const api = {
     request("/api/classes/reorder", { method: "PUT", body: JSON.stringify({ ordered_ids }) }),
 
   classNotes: (classId) => request(`/api/classes/${classId}/notes`),
+  allNotes: (filters = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) if (v) q.set(k, v);
+    return request(`/api/notes?${q}`);
+  },
   addClassNote: (classId, body) =>
     request(`/api/classes/${classId}/notes`, { method: "POST", body: JSON.stringify(body) }),
   updateClassNote: (classId, noteId, body) =>

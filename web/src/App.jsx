@@ -9,6 +9,7 @@ import DistributePage from "./pages/DistributePage";
 import TransferPage from "./pages/TransferPage";
 import TodoPage from "./pages/TodoPage";
 import LogsPage from "./pages/LogsPage";
+import StatusPage from "./pages/StatusPage";
 import LoginPage from "./pages/LoginPage";
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
   { key: "move", label: "調貨", icon: "🔄" },
   { key: "todo", label: "待辦", icon: "✅" },
   { key: "logs", label: "流水", icon: "🧾" },
+  { key: "status", label: "狀態", icon: "📋" },
 ];
 
 export default function App() {
@@ -127,6 +129,9 @@ export default function App() {
         {tab === "move" ? <TransferPage {...shared} /> : null}
         {tab === "todo" ? <TodoPage toast={setToast} /> : null}
         {tab === "logs" ? <LogsPage {...shared} /> : null}
+        {tab === "status" ? (
+          <StatusPage toast={setToast} onOpenClass={() => setTab("class")} />
+        ) : null}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white bg-white/95 pb-safe backdrop-blur-md">

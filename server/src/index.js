@@ -470,6 +470,30 @@ app.post(
 
 /** 班級備註：最新在前 */
 app.get(
+  "/api/notes",
+  handle(async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 100, 300);
+    const rows = await db
+      .from("class_notes")
+      .select("id,class_id,body,operator,created_at,classes(id,name)")
+      .order("created_at", { ascending: false })
+      .limit(limit)
+      .then(unwrap);
+
+    res.json(
+      (rows || []).map((r) => ({
+        id: r.id,
+        class_id: r.class_id,
+        class_name: r.classes?.name ?? "（已刪班級）",
+        body: r.body,
+        operator: r.operator,
+        created_at: r.created_at,
+      }))
+    );
+  })
+);
+
+app.get(
   "/api/classes/:id/notes",
   handle(async (req, res) => {
     const classId = Number(req.params.id);
