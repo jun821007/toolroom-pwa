@@ -19,6 +19,7 @@ export default function StockPage({ items, reload, toast }) {
   const [busy, setBusy] = useState(false);
   const [sorting, setSorting] = useState(false);
   const [localOrder, setLocalOrder] = useState(null);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -94,6 +95,15 @@ export default function StockPage({ items, reload, toast }) {
           <p className="text-2xl font-extrabold text-sky2-600">{total.toLocaleString("zh-TW")}</p>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setAdjustOpen(true)}
+        className="btn-plain w-full border-2 border-dashed border-mint-300 text-mint-700"
+        disabled={sorting}
+      >
+        調整起始貨量
+      </button>
 
       <div className="flex gap-2">
         <input
@@ -196,7 +206,109 @@ export default function StockPage({ items, reload, toast }) {
           onRun={run}
         />
       ) : null}
+
+      {adjustOpen ? (
+        <AdjustPublicStockSheet
+          items={ordered}
+          onClose={() => setAdjustOpen(false)}
+          onSaved={async () => {
+            setAdjustOpen(false);
+            await reload();
+          }}
+          toast={toast}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** 一次設定公庫多個品項的絕對數量（盤點／起始貨量） */
+function AdjustPublicStockSheet({ items, onClose, onSaved, toast }) {
+  const [draft, setDraft] = useState(() => {
+    const init = {};
+    for (const i of items) init[i.id] = String(i.qty ?? 0);
+    return init;
+  });
+  const [busy, setBusy] = useState(false);
+  const [keyword, setKeyword] = useState("");
+
+  const kw = keyword.trim();
+  const visible = kw ? items.filter((i) => i.name.includes(kw)) : items;
+
+  const changed = items
+    .map((i) => {
+      const next = Math.trunc(Number(draft[i.id]));
+      const prev = i.qty ?? 0;
+      if (!Number.isInteger(next) || next < 0) return null;
+      if (next === prev) return null;
+      return { item_id: i.id, qty: next };
+    })
+    .filter(Boolean);
+
+  const submit = async () => {
+    if (busy || changed.length === 0) return;
+    setBusy(true);
+    try {
+      await api.setPublicStock({ items: changed, note: "公庫起始／調整貨量" });
+      toast?.({ ok: true, msg: `已更新 ${changed.length} 項公庫貨量` });
+      await onSaved();
+    } catch (err) {
+      toast?.({ ok: false, msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open
+      title="調整公庫貨量"
+      onClose={onClose}
+      footer={
+        <button className="btn-mint w-full" disabled={busy || changed.length === 0} onClick={submit}>
+          {busy ? "儲存中…" : changed.length ? `儲存 ${changed.length} 項變更` : "尚未修改"}
+        </button>
+      }
+    >
+      <p className="mb-3 text-sm font-bold text-slate-500">
+        直接填公庫「現在應該有多少」。適合登記起始貨量或盤點修正；與「補貨」不同，這裡是設成絕對數量。
+      </p>
+      <input
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
+        placeholder="搜尋工具…"
+        className="field mb-3"
+      />
+      <div className="space-y-2">
+        {visible.map((item) => {
+          const prev = item.qty ?? 0;
+          const dirty = String(prev) !== String(draft[item.id] ?? "0");
+          return (
+            <div
+              key={item.id}
+              className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${
+                dirty ? "border-mint-400 bg-mint-50" : "border-slate-100 bg-white"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-800">{item.name}</p>
+                <p className="text-[11px] font-bold text-slate-400">
+                  目前 {prev} {item.unit}
+                </p>
+              </div>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={draft[item.id] ?? "0"}
+                onChange={(e) => setDraft((d) => ({ ...d, [item.id]: e.target.value }))}
+                className="h-11 w-20 rounded-xl border-2 border-slate-200 text-center text-lg font-extrabold outline-none focus:border-mint-400"
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 

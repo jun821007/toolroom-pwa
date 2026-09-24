@@ -419,6 +419,22 @@ app.post(
   })
 );
 
+/** 公庫起始／調整貨量（絕對值） */
+app.post(
+  "/api/stock/public",
+  handle(async (req, res) => {
+    const count = await db
+      .rpc("set_public_stock", {
+        p_items: cleanAbsoluteItems(req.body?.items),
+        p_operator: req.operator,
+        p_note: req.body?.note || null,
+      })
+      .then(unwrap);
+
+    res.json({ ok: true, count });
+  })
+);
+
 app.post(
   "/api/distribute",
   handle(async (req, res) => {

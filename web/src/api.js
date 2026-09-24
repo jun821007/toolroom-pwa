@@ -53,6 +53,8 @@ export const api = {
     request("/api/items/reorder", { method: "PUT", body: JSON.stringify({ ordered_ids }) }),
   restock: (id, body) =>
     request(`/api/items/${id}/restock`, { method: "POST", body: JSON.stringify(body) }),
+  setPublicStock: (body) =>
+    request("/api/stock/public", { method: "POST", body: JSON.stringify(body) }),
 
   createClass: (body) => request("/api/classes", { method: "POST", body: JSON.stringify(body) }),
   updateClass: (id, body) => request(`/api/classes/${id}`, { method: "PUT", body: JSON.stringify(body) }),

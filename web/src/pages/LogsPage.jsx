@@ -98,7 +98,9 @@ export default function LogsPage({ classes, items, toast }) {
 
                   <p className="mt-1.5 text-sm font-extrabold text-slate-800">
                     {log.kind === "ADJUST"
-                      ? `${nameOf(log.to_class)}（自行調整）`
+                      ? log.to_class == null && log.from_class == null
+                        ? "衛生組公庫（調整貨量）"
+                        : `${nameOf(log.to_class)}（自行調整）`
                       : log.kind === "RESTOCK"
                         ? "衛生組公庫"
                         : (
